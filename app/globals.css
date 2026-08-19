@@ -1,0 +1,360 @@
+/* Adashi — design tokens + glass-morphism system, ported from the legacy
+   @adashi/ui theme and admin app CSS. HSL-channel vars consumed as
+   hsl(var(--token)) / hsl(var(--token) / alpha). Dark is default; light via
+   :root[data-theme="light"] / .light-theme. */
+
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap");
+
+:root {
+  --font-sans: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+
+  /* Surfaces */
+  --bg-dark: 220 15% 8%;
+  --bg-card: 220 15% 12%;
+  --border-glass: 220 15% 20% / 0.15;
+
+  /* Accents (each with a translucent -glow variant) */
+  --accent-emerald: 150 84% 45%;
+  --accent-emerald-glow: 150 84% 45% / 0.15;
+  --accent-gold: 38 92% 50%;
+  --accent-gold-glow: 38 92% 50% / 0.15;
+  --accent-coral: 354 84% 57%;
+  --accent-coral-glow: 354 84% 57% / 0.15;
+  --accent-cobalt: 217 91% 60%;
+  --accent-cobalt-glow: 217 91% 60% / 0.15;
+
+  /* Text */
+  --text-primary: 210 20% 98%;
+  --text-secondary: 210 10% 70%;
+  --text-muted: 210 10% 50%;
+
+  /* Radii / effects */
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+  --shadow-premium: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --glass-blur: blur(12px);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: hsl(var(--bg-dark));
+  color: hsl(var(--text-primary));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ── Glass card ─────────────────────────────────────────────────────────── */
+.glass-card {
+  background: rgba(20, 23, 31, 0.65);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: var(--shadow-premium);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  transition:
+    transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.glass-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* ── KPI card ───────────────────────────────────────────────────────────── */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.kpi-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+}
+.kpi-card.emerald::before {
+  background-color: hsl(var(--accent-emerald));
+}
+.kpi-card.gold::before {
+  background-color: hsl(var(--accent-gold));
+}
+.kpi-card.coral::before {
+  background-color: hsl(var(--accent-coral));
+}
+.kpi-card.cobalt::before {
+  background-color: hsl(var(--accent-cobalt));
+}
+.kpi-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--text-secondary));
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: hsl(var(--text-primary));
+}
+.kpi-subtext {
+  font-size: 12px;
+  color: hsl(var(--text-muted));
+}
+
+/* ── Forms / buttons ────────────────────────────────────────────────────── */
+.input-field {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: hsl(var(--text-primary));
+  font-family: var(--font-sans);
+  font-size: 16px;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+  outline: none;
+}
+.input-field:focus {
+  border-color: hsl(var(--accent-emerald));
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-primary {
+  width: 100%;
+  padding: 14px;
+  background: hsl(var(--accent-emerald));
+  border: none;
+  border-radius: var(--radius-sm);
+  color: hsl(var(--bg-dark));
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition:
+    filter 0.2s ease,
+    transform 0.1s ease;
+}
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Compact button variants used across admin actions */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: hsl(var(--text-primary));
+  transition:
+    filter 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-emerald {
+  background: hsl(var(--accent-emerald) / 0.12);
+  border-color: hsl(var(--accent-emerald) / 0.25);
+  color: hsl(var(--accent-emerald));
+}
+.btn-coral {
+  background: hsl(var(--accent-coral) / 0.1);
+  border-color: hsl(var(--accent-coral) / 0.2);
+  color: hsl(var(--accent-coral));
+}
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: hsl(var(--border-glass));
+  color: hsl(var(--text-secondary));
+}
+.btn-emerald:hover,
+.btn-coral:hover,
+.btn-ghost:hover {
+  filter: brightness(1.15);
+}
+
+/* ── Status badges ──────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.badge.emerald {
+  background: hsl(var(--accent-emerald) / 0.12);
+  color: hsl(var(--accent-emerald));
+}
+.badge.gold {
+  background: hsl(var(--accent-gold) / 0.12);
+  color: hsl(var(--accent-gold));
+}
+.badge.coral {
+  background: hsl(var(--accent-coral) / 0.12);
+  color: hsl(var(--accent-coral));
+}
+.badge.cobalt {
+  background: hsl(var(--accent-cobalt) / 0.12);
+  color: hsl(var(--accent-cobalt));
+}
+.badge.muted {
+  background: rgba(255, 255, 255, 0.06);
+  color: hsl(var(--text-muted));
+}
+
+/* ── Data tables ────────────────────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.data-table th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: hsl(var(--text-muted));
+  border-bottom: 1px solid hsl(var(--border-glass));
+}
+.data-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid hsl(var(--border-glass));
+  color: hsl(var(--text-secondary));
+}
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Smooth theme switching */
+body,
+.glass-card,
+.input-field,
+aside,
+header,
+main,
+div,
+button,
+span,
+a,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+table,
+tr,
+th,
+td {
+  transition:
+    background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Light theme ────────────────────────────────────────────────────────── */
+:root[data-theme="light"],
+.light-theme {
+  --bg-dark: 210 20% 97%;
+  --bg-card: 0 0% 100%;
+  --border-glass: 210 20% 85% / 0.4;
+  --text-primary: 220 20% 12%;
+  --text-secondary: 215 15% 32%;
+  --text-muted: 215 15% 45%;
+  --accent-emerald: 150 84% 36%;
+  --accent-emerald-glow: 150 84% 45% / 0.08;
+  --accent-gold: 38 92% 40%;
+  --accent-gold-glow: 38 92% 50% / 0.08;
+  --accent-coral: 354 84% 48%;
+  --accent-coral-glow: 354 84% 57% / 0.08;
+  --accent-cobalt: 217 91% 48%;
+  --accent-cobalt-glow: 217 91% 60% / 0.08;
+}
+:root[data-theme="light"] .glass-card,
+.light-theme .glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.06);
+}
+:root[data-theme="light"] .glass-card:hover,
+.light-theme .glass-card:hover {
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.1);
+}
+:root[data-theme="light"] .input-field,
+.light-theme .input-field {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: hsl(var(--text-primary));
+}
+:root[data-theme="light"] .input-field:focus,
+.light-theme .input-field:focus {
+  border-color: hsl(var(--accent-emerald));
+  background: rgba(0, 0, 0, 0.01);
+}
+:root[data-theme="light"] .data-table tbody tr:hover td,
+.light-theme .data-table tbody tr:hover td {
+  background: rgba(0, 0, 0, 0.02);
+}

@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16
+    container_name: adashi-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: adashi
+      POSTGRES_USER: adashi
+      POSTGRES_PASSWORD: adashi
+    ports:
+      # Host 5433 → container 5432 (host 5432 is taken by a native postgresql-x64-16 service)
+      - "5433:5432"
+    volumes:
+      - adashi-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adashi -d adashi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  adashi-db-data:

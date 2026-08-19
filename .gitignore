@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files (local secrets — DATABASE_URL, AUTH_SECRET, provider keys)
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# archived old Vite+Supabase project + its git history — kept as a backup after the
+# Next.js rebuild. Safe to delete these folders from disk once you're confident.
+/.git-legacy-backup/
+/legacy/
+/apps/
