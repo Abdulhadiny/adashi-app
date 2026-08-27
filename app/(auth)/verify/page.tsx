@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogoIcon } from "@/components/Logo";
+import { needsPinAction } from "../set-pin/actions";
 
 function VerifyInner() {
   const router = useRouter();
@@ -23,7 +24,9 @@ function VerifyInner() {
       setLoading(false);
       return;
     }
-    router.push("/");
+    // First-timers (and forgot-PIN visitors) go set their PIN; others go home.
+    const needsPin = await needsPinAction().catch(() => false);
+    router.push(needsPin ? "/set-pin" : "/");
     router.refresh();
   }
 

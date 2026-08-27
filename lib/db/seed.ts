@@ -1,8 +1,8 @@
 // Idempotent dev seed. Run: npm run db:seed  (Docker Postgres must be up + migrated)
-// No passwords exist — "login" means a users row with a known phone exists; request
-// an OTP for that phone and read the code from the server console.
+// Seeded active users get PIN 123456 for instant login; the pending participant
+// gets none (demoing first-OTP activation). OTP codes print to the dev console.
 import "dotenv/config";
-import { eq } from "drizzle-orm";
+import { eq, inArray, isNull, and } from "drizzle-orm";
 import { db } from "./client";
 import {
   agentParticipants,
@@ -15,12 +15,17 @@ import {
   users,
 } from "./schema";
 import { normalizeNgPhone } from "../auth/phone";
+import { hashPin } from "../auth/pin";
 
 const ADMIN_PHONE = normalizeNgPhone("08000000001");
 const AGENT1_PHONE = normalizeNgPhone("08000000002");
 const AGENT2_PHONE = normalizeNgPhone("08000000003");
 const P1_PHONE = normalizeNgPhone("08000000004");
 const P2_PHONE = normalizeNgPhone("08000000005");
+
+const SEED_PIN = "123456";
+// p2 stays PIN-less on purpose: pending participants activate via first OTP.
+const PIN_PHONES = [ADMIN_PHONE, AGENT1_PHONE, AGENT2_PHONE, P1_PHONE];
 
 async function main() {
   const [existingAdmin] = await db
@@ -30,7 +35,17 @@ async function main() {
     .limit(1);
 
   if (existingAdmin) {
-    console.log(`\nAlready seeded. Log in as admin with phone: ${ADMIN_PHONE}\n`);
+    // Backfill PINs on databases seeded before PIN login existed.
+    const backfilled = await db
+      .update(users)
+      .set({ pinHash: hashPin(SEED_PIN) })
+      .where(and(inArray(users.phone, PIN_PHONES), isNull(users.pinHash)))
+      .returning({ id: users.id });
+    console.log(
+      `\nAlready seeded. Log in as admin with phone: ${ADMIN_PHONE} (PIN ${SEED_PIN}).` +
+        (backfilled.length ? ` Backfilled PINs for ${backfilled.length} user(s).` : "") +
+        `\n`,
+    );
     return;
   }
 
@@ -40,12 +55,19 @@ async function main() {
     fullName: "Adashi Admin",
     role: "admin",
     status: "active",
+    pinHash: hashPin(SEED_PIN),
   });
 
   // Two pending-approval agents (so the Approvals queue is non-empty)
   const [agent1] = await db
     .insert(users)
-    .values({ phone: AGENT1_PHONE, fullName: "Chidi Okafor", role: "agent", status: "active" })
+    .values({
+      phone: AGENT1_PHONE,
+      fullName: "Chidi Okafor",
+      role: "agent",
+      status: "active",
+      pinHash: hashPin(SEED_PIN),
+    })
     .returning({ id: users.id });
   await db.insert(agentProfiles).values({
     userId: agent1.id,
@@ -55,7 +77,13 @@ async function main() {
 
   const [agent2] = await db
     .insert(users)
-    .values({ phone: AGENT2_PHONE, fullName: "Amina Bello", role: "agent", status: "active" })
+    .values({
+      phone: AGENT2_PHONE,
+      fullName: "Amina Bello",
+      role: "agent",
+      status: "active",
+      pinHash: hashPin(SEED_PIN),
+    })
     .returning({ id: users.id });
   await db.insert(agentProfiles).values({
     userId: agent2.id,
@@ -66,7 +94,13 @@ async function main() {
   // Participants: one active (with savings activity), one pending (activates on first OTP)
   const [p1] = await db
     .insert(users)
-    .values({ phone: P1_PHONE, fullName: "Ngozi Eze", role: "participant", status: "active" })
+    .values({
+      phone: P1_PHONE,
+      fullName: "Ngozi Eze",
+      role: "participant",
+      status: "active",
+      pinHash: hashPin(SEED_PIN),
+    })
     .returning({ id: users.id });
   await db.insert(participantProfiles).values({
     userId: p1.id,
@@ -142,8 +176,10 @@ async function main() {
   Admin login phone       : ${ADMIN_PHONE}
   Pending agent phones     : ${AGENT1_PHONE}, ${AGENT2_PHONE}
   Participant phones       : ${P1_PHONE} (active), ${P2_PHONE} (pending)
+  PIN for seeded users     : ${SEED_PIN}  (${P2_PHONE} has none — first login is via OTP)
   ─────────────────────────────────────────────
-  At /login enter the admin phone, then read the OTP from THIS console.
+  At /login sign in with phone + PIN, or use "one-time code" and read the OTP
+  from the dev-server console.
 `);
 }
 

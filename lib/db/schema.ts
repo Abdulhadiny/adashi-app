@@ -54,6 +54,12 @@ export const users = pgTable(
     fullName: text("full_name").notNull(),
     role: userRole("role").notNull(),
     status: userStatus("status").notNull().default("active"),
+    // PIN login (set after first OTP-verified login; null = OTP-only so far).
+    // "salt:hash" hex from lib/auth/pin. Lockout state lives here, not in a
+    // separate table — a 6-digit PIN is only as strong as its attempt limit.
+    pinHash: text("pin_hash"),
+    pinFailedAttempts: integer("pin_failed_attempts").notNull().default(0),
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
     createdAt,
     updatedAt,
   },
