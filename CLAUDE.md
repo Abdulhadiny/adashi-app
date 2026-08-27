@@ -4,26 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Adashi is a digital community savings / microfinance platform (rotating savings groups) for Nigeria/West Africa.
+Adashi is a digital community-savings / microfinance platform (rotating daily-savings groups — _adashe /
+esusu / ajo_) for Nigeria/West Africa. Field **agents** collect small daily contributions from **savers
+(participants)** over a cycle, take a commission at close, and pay out the balance; **admins** oversee
+agents, the money ledger, disputes, and notifications.
 
-> **The `MIGRATION.md` rebuild is underway — the repo root is now a single Next.js 16 app.**
-> Per `MIGRATION.md`, Adashi is being rebuilt from the old pnpm-monorepo of three Vite SPAs on
-> Supabase into **one Next.js 16 (App Router) app on plain Postgres + Drizzle + Auth.js (phone+OTP)**,
-> with role as a `users.role` column and access enforced in a **server-side data layer (`lib/data`)**,
-> not RLS. **Phases 1–4 are done**: foundation (Drizzle schema, phone-OTP auth, edge role gate), the
-> full **admin** flows (Home KPIs, Agents, Approvals, Ledger, Disputes, Notifications), the **agent**
-> flows (self-signup, pending-approval gate, provision/link savers, cycles, daily deposits on a 31-day
-> grid, close with commission/payout, disputes), and the **participant** flows (login/activation, savings
-> dashboard, read-only plan calendar, raise disputes). **Only Phase 5 (PWA packaging + deploy) remains.**
-> All roles use **unique-phone + OTP single-auth**; participants are agent-provisioned and auto-activate
-> on first OTP. The old Vite+Supabase source is preserved under **`legacy/`** (`legacy/admin|agent|
-> participant|packages|supabase`); `legacy/_deprecated/` is throwaway (old node_modules + dead code).
-> The **`## Architecture` sections below describe that legacy Vite+Supabase code**, not the live app —
-> read them only when porting a legacy flow.
+The repo root is **one Next.js 16 (App Router) app** for all three roles ("three interfaces, one auth"),
+on plain **Postgres + Drizzle + Auth.js (phone+OTP)**. Role is a `users.role` column and access is
+enforced in a **server-side data layer (`lib/data`)**, not RLS. This is the rebuild from a former pnpm
+monorepo of three Vite SPAs on Supabase; **rebuild Phases 1–4 are done** (foundation, and the full admin,
+agent, and participant flows) and only **Phase 5 (PWA packaging + deploy)** remains — see `MIGRATION.md`
+for the target spec and `README.md` for a fuller product/usage guide.
+
+> The old Vite+Supabase source and its git history are **not in this repo** — they live in gitignored
+> local backups (`/legacy/`, `/apps/`, `/.git-legacy-backup/`) that are absent on a fresh clone. Ignore
+> any reference to `apps/*`, `packages/*`, `shared/`, `supabase/`, or Supabase RLS/edge-functions: that
+> code no longer exists here. Everything below describes the **live single app.**
 
 ## Commands
 
-The live app uses **npm** (single package, no workspace). Postgres runs in Docker.
+Single npm package (no workspace). Postgres runs in Docker.
 
 ```bash
 npm install
@@ -36,92 +36,96 @@ npm run db:seed              # idempotent seed; prints the admin login phone (23
 
 npm run dev                  # next dev on http://localhost:3000
 npm run build                # next build — this runs tsc, so a clean build is the type-check gate
-npm run lint                 # eslint . (flat config imports eslint-config-next directly; see below)
+npm run lint                 # eslint . (flat config, see below)
+npm run db:studio            # Drizzle Studio;  npm run db:push = throwaway schema push (no migration)
 ```
 
-There is **no test runner**. "Verification" = `npm run build` (type-check) + `npm run lint`. End-to-end:
-seed → `npm run dev` → at `/login` enter the admin phone → **the OTP is logged to the dev-server
-console** (dev `SmsProvider` stub) → `/verify` → land on `/admin`.
+There is **no test runner**. "Verification" = `npm run build` (type-check) + `npm run lint`; for behaviour,
+run the app and drive the role's screens. End-to-end: seed → `npm run dev` → at `/login` enter the admin
+phone → **the OTP is logged to the dev-server console** (dev `SmsProvider` stub) → `/verify` → land on
+`/admin`. Seeded logins are in `README.md` (admin `2348000000001`; agents `…002`/`…003` start
+pending-approval; participants `…004` active / `…005` pending). Local formats like `08000000001` are
+normalized to `234…`.
 
 `.env` (drizzle-kit, via `dotenv/config`) and `.env.local` (Next runtime) both hold `DATABASE_URL`
-(`…@localhost:5433/adashi`), `AUTH_SECRET`, `AUTH_TRUST_HOST=true`; they are gitignored.
+(`…@localhost:5433/adashi`), `AUTH_SECRET`, `AUTH_TRUST_HOST=true`; both are gitignored. drizzle-kit does
+**not** read `.env.local`, so `DATABASE_URL` must be in `.env` too.
 
-### New-app architecture (the live code)
-- `app/` — App Router. Route groups `(auth)` (login/verify/signup), `(admin)` (pages under
-  `app/(admin)/admin/*`), `(agent)` (the full field app under `app/(agent)/agent/*` — home, participants,
-  cycles/[id], disputes, history, settings, behind a pending-approval gate in its layout), and
-  `(participant)` (the saver app under `app/(participant)/participant/*` — savings dashboard,
-  cycles/[id] read-only calendar, disputes, settings). `app/api/otp/send` and
-  `app/api/auth/[...nextauth]` are the auth endpoints.
-- `lib/db` — Drizzle `schema.ts` (all tables + pgEnums + checks incl. the `notifications` dual-shape
-  and numeric-money-as-**string**), `client.ts` (postgres.js singleton on `globalThis`), `migrations/`, `seed.ts`.
-- `lib/auth` — the **edge/Node split that makes phone-OTP + edge middleware work**: `auth.config.ts`
-  (EDGE-safe: callbacks only, no DB), `auth.ts` (NODE: `NextAuth` + Credentials `authorize`, JWT sessions),
-  `otp.ts` (HMAC OTP + `SmsProvider` dev stub), `phone.ts` (`normalizeNgPhone`). Never import `auth.ts`/
-  `lib/db` from anything reachable by `auth.config.ts` or `proxy.ts` (it would pull Node code into the edge bundle).
-- `lib/data` — the **RBAC boundary**: `session.ts` (`getSessionOrThrow`/`requireRole`) + per-domain read
-  functions; every function scopes its query by the caller's role/id. `agent.ts` adds `requireActiveAgent`
-  (also enforces `approvalStatus = active`). Mutations are server actions in `app/(admin)/admin/*/actions.ts`
-  and `app/(agent)/agent/actions.ts` (guard → mutate → `revalidatePath` → dispatch). Money is summed in SQL;
-  the close-cycle math is `commission = min(chosen, total_deposited)`, `payout = max(0, total − commission)`.
-  Note: drizzle wraps pg errors — check unique-violation code on `e.cause.code`, not `e.code`.
-- `lib/notifications/dispatch.ts` — outbound message seam (ported from the edge fns), dev-stubbed:
-  `dispatchAgentApprovalNotification` (admin) and `dispatchParticipantNotification`
-  (onboarding|cycle_start|deposit|cycle_close).
-- `proxy.ts` — the edge role gate (Next 16 renamed `middleware.ts` → `proxy.ts`); redirects by path prefix.
+## Architecture (the live code)
+
+- `app/` — App Router. Route groups: `(auth)` (login/verify/signup), `(admin)` (pages under
+  `app/(admin)/admin/*`: home KPIs, agents, approvals, ledger, disputes, notifications), `(agent)` (the
+  field app under `app/(agent)/agent/*`: home, participants, cycles/[cycleId], disputes, history,
+  settings — behind a pending-approval gate in its `layout.tsx`), and `(participant)` (the saver app
+  under `app/(participant)/participant/*`: dashboard, cycles/[cycleId] read-only calendar, disputes,
+  settings). `app/api/otp/send` and `app/api/auth/[...nextauth]` are the auth endpoints.
+- `lib/db` — Drizzle `schema.ts` (all tables + pgEnums + `check()`s, incl. the `notifications` dual-shape
+  and numeric-money-as-**string**), `client.ts` (postgres.js singleton pinned on `globalThis`),
+  `migrations/`, `seed.ts`.
+- `lib/auth` — the **edge/Node split that makes phone-login + edge proxy work**: `auth.config.ts`
+  (EDGE-safe: callbacks only, no DB — puts `{id, role, phone}` in the JWT/session), `auth.ts` (NODE:
+  `NextAuth` + one Credentials `authorize` that accepts **either phone+PIN or phone+code (OTP)**, JWT
+  sessions; PIN is the default login, OTP is onboarding/reset only), `otp.ts` (HMAC OTP + `SmsProvider`
+  dev stub, plus a per-phone issuance cap), `pin.ts` (scrypt PIN hash + `MAX_PIN_ATTEMPTS`/`PIN_LOCK_MINUTES`
+  lockout constants; the lockout — not the hash — is what secures a 6-digit PIN), `phone.ts`
+  (`normalizeNgPhone`). **Never import `auth.ts` / `lib/db` from anything reachable by `auth.config.ts` or
+  `proxy.ts`** — it pulls Node code into the edge bundle. PIN login is phone+PIN (no SMS); first login and
+  "forgot PIN" go through OTP → `/set-pin`. Two non-obvious couplings: (1) lockout surfaces as a
+  `PinLockedError` whose `code = "pin_locked"` reaches the client on `signIn(..., {redirect:false}).code`,
+  which the login page uses to tell "locked out" from "wrong PIN"; (2) `/set-pin` has **no token** — an
+  authenticated session *is* the authorization (a fresh OTP login or an existing session), and the verify
+  page routes there via `needsPinAction()` (true when `pinHash` is null).
+- `lib/data` — the **RBAC boundary** (replaces Supabase RLS). `session.ts` resolves the caller from the
+  session itself — callers never pass their own id/role — via `getSessionOrThrow` / `requireRole(...)`
+  (throws `UnauthorizedError` / `ForbiddenError`); every per-domain read function (`admin.ts`, `agents.ts`,
+  `approvals.ts`, `ledger.ts`, `disputes.ts`, `notifications.ts`, `agent.ts`, `participant.ts`) scopes its
+  query by the caller's role/id. `agent.ts` adds `requireActiveAgent` (also enforces `approvalStatus =
+  active`). Mutations are **server actions** in `app/(admin)/admin/*/actions.ts`, `app/(agent)/agent/actions.ts`,
+  `app/(participant)/participant/actions.ts`, and `app/(auth)/signup/actions.ts`; the pattern is
+  **guard → mutate → `revalidatePath` → dispatch notification**.
+- `lib/notifications/dispatch.ts` — outbound-message seam (dev-stubbed): `dispatchAgentApprovalNotification`
+  (admin) and `dispatchParticipantNotification` (onboarding|cycle_start|deposit|cycle_close).
+- `lib/format.ts` — UI-edge money/format helpers (e.g. `formatNaira`). `components/` — shared UI
+  (`Logo`, `ThemeToggle`, `SignOutButton`) + per-role shells (`admin/`, `agent/`, `participant/`).
+  `types/next-auth.d.ts` augments the Auth.js session/JWT with `{ id, role, phone }`.
+- `proxy.ts` — the **edge role gate** (Next 16 renamed `middleware.ts` → `proxy.ts`). Redirects by path
+  prefix (route-group parens don't appear in URLs); unauthenticated → `/login`, wrong-role → that role's
+  home. It is a coarse UX redirect — the real security boundary is `lib/data`.
 - Path alias `@/*` → repo root (`tsconfig.json`). Styling: CSS-var/glass tokens in `app/globals.css` +
-  inline styles (ported from `legacy/packages/ui`); `lucide-react` icons; theme via `<html data-theme>`.
-- Supabase Realtime was dropped: admin pages are RSC that refetch per navigation + `revalidatePath` after mutations.
-- **Windows note:** the locked `apps/agent/android` Capacitor folder couldn't be removed (Gradle/Studio
-  file lock); it's gitignored (`/apps/`) and safe to delete once that process is closed.
+  inline styles; `lucide-react` icons; theme via `<html data-theme>`. Admin/agent pages are RSC that
+  refetch per navigation + `revalidatePath` after mutations (no realtime).
 
-## Architecture
+### The money math (close a cycle)
 
-### Monorepo layout
-- `apps/admin` — admin portal. The **only app with real pages implemented** (`src/pages/`: Home/KPIs, Agents, Approvals, Ledger, Disputes, Notifications, Login). Uses `react-router-dom` v7 with route guards; also contains "Coming Soon" placeholder routes for agent/participant.
-- `apps/agent` — field-agent app, plus Capacitor for Android. Currently a large single-file scaffold (`src/App.tsx`).
-- `apps/participant` — saver-facing app. Scaffold.
-- `packages/db` (`@adashi/db`) — **the real shared code**: Supabase client singleton, DB models, API-response types, and auth/role helpers. Almost everything shared flows through here.
-- `packages/ui` (`@adashi/ui`) — currently only `src/theme.css` (CSS-variable design tokens; glass-morphism styling is done with inline styles referencing `hsl(var(--...))`).
-- `packages/auth` (`@adashi/auth`) — stub (exports a version string only). Real auth logic lives in `@adashi/db`, not here.
-
-### Path aliases must be kept in sync in two places
-Internal packages are consumed as TypeScript source (no build step). Each app resolves them via **both**:
-1. `vite.config.ts` → `resolve.alias` (`@adashi/db` → `packages/db/src/index.ts`, `@adashi/ui` → `packages/ui/src`)
-2. `tsconfig.app.json` → `compilerOptions.paths`
-
-If you add or rename a shared package, update both in every app or you'll get runtime-vs-typecheck mismatches.
-
-### Auth & roles (the core cross-cutting concept)
-There is no role column on `auth.users`. **Role is derived by table membership** in `packages/db/src/auth.ts`: `resolveUserRole()` checks the `admins` → `agents` → `participants` tables in order by `auth.uid()`. `getCurrentAuthUser()` returns an `AuthUser { id, role, ... }`.
-
-- Apps gate routes with `RequireAuth` + `RequireRole` guards (see `apps/admin/src/components/guards/`). Guards call `getCurrentAuthUser` and subscribe to `supabase.auth.onAuthStateChange`.
-- **Participants are special**: phone is non-unique (shared devices), so a participant has no `auth.users` row of their own in the normal flow. Their scope is carried by a custom `participant_id` JWT claim, read server-side by the Postgres function `current_participant_id()`. Client side, `setSessionParticipantId()` stores it in `localStorage` under `adashi:participant_id` and refreshes the session.
-- Agent self-registration is automatic: signing up with `business_name` in user metadata fires the `handle_new_agent` trigger, creating an `agents` row with `status = 'pending_approval'`. Admins approve via the Approvals page → `agent_approvals_audit`.
-
-### Database & security (`supabase/schema.sql`)
-Tables: `admins, agents, participants, agent_participants` (M:N link), `cycles` (a saving plan), `transactions` (deposit/withdrawal, one per cycle/day/kind), `notifications`, `disputes`, `agent_approvals_audit`. `cycle_balances` is a `security_invoker` view for aggregates.
-
-**RLS is enabled on every table and is the security boundary — not app code.** The consistent pattern per table is three policies: admin full access (`is_admin()`), agent scoped by `auth.uid()`/ownership, participant scoped by `current_participant_id()`. Cross-agent participant lookup/linking is done through `SECURITY DEFINER` RPCs (`lookup_participant_by_phone`, `register_or_link_participant`) rather than direct table access. When adding tables or columns, add matching RLS policies in the same three-role shape.
-
-### Edge functions
-Deno functions in `supabase/functions/` dispatch WhatsApp/SMS (Twilio / WAAPI / Termii) for approvals and participant events, logging to the `notifications` table. They run with the service role.
+A **cycle** is one saver's plan at a fixed `daily_amount`; the agent records one **deposit** per day
+(days 1–31, unique per `(cycle, kind, day_of_cycle)`). Deposit **totals are summed in SQL**, never with JS
+`Number` math. On close (`app/(agent)/agent/actions.ts`):
+`commission = min(chosenCommission, totalDeposited)` and `payout = max(0, totalDeposited − commission)`,
+where `chosenCommission` is one day's `daily_amount` for a normal close or an agent-entered amount for an
+**early close** (fewer than 15 deposits).
 
 ## Conventions & gotchas
-- **TypeScript is strict** (`strict: true`, `strictNullChecks`, `noUnusedLocals/Parameters`, `verbatimModuleSyntax`). Note `noImplicitAny` is **off**. Prefer real types from `@adashi/db` over `as any`; use `verbatimModuleSyntax`-friendly `import type` for type-only imports.
-- **`README.md` is stale** — it documents a pre-monorepo layout (`agent-app/`, `dashboard/`, `participant-app/` at root, npm-per-app). Trust this file and the actual tree, not the README's structure/commands.
-- **`shared/` (repo root) is legacy** — a duplicate of `packages/db`'s content left over from the pre-monorepo split. It is not imported anywhere; do not add to it. Put shared code in `packages/db`.
-- **`MIGRATION.md` is the authoritative target spec** (Next.js/Postgres/Drizzle/Auth.js — see the note at the top). `SUGGESTED_CHANGES.md`, `adashe-*` plan files, and the `adashe-mvp-plan*.txt`/`.pdf` extracts are older design/roadmap docs (e.g. collapsing the three apps into one); where they conflict with `MIGRATION.md`, the latter wins. All of these describe intended direction, not current state.
-- `MIGRATION.md` lists code slated for deletion in Phase 1: root `shared/`, `packages/auth`, the participant JWT-claim path (`setSessionParticipantId` / `current_participant_id()`), root PDF deps (`pdf-parse`, `pdfjs-dist`, `extract_pdf.mjs`), stale `README.md`, and the stray `tash push …` root file. Don't invest in those unless a task is explicitly about the current Supabase app.
-- Phone numbers are Nigerian E.164 (`234...`); apps normalize with a `normalizeNgPhone` helper.
-- `scripts/dev.js` / `scripts/build.js` shell out to `npm run dev`/`npm run build` inside each app dir (they invoke the per-app scripts, not workspace resolution). `scripts/restore.js` restores a stashed `node_modules/.ignored` per app.
 
-<!-- BEGIN:nextjs-agent-rules -->
+- **TypeScript is `strict: true`** (the only strictness flag set). `verbatimModuleSyntax` is **off** and
+  `noImplicitAny` is **not** separately enabled. Prefer real types from `lib/db/schema` over `as any`.
+- **Money is `numeric(12,2)` → JS `string`.** Never `Number(a) + Number(b)`; sum in SQL and format at the
+  UI edge (`lib/format.ts`). The close-cycle `min`/`max` runs in JS on the already-SQL-summed total, then
+  `.toFixed(2)` back to a string.
+- **Drizzle wraps the driver error**, so a Postgres code (e.g. unique-violation `23505`) can be on `e.code`
+  **or** `e.cause.code` — check both (see `app/(agent)/agent/actions.ts`).
+- **Notifications are dual-shape.** A DB `CHECK` allows either a full participant notification (participant
+  + agent + channel) or an agent-only one (approvals: agent set, participant/channel null).
+- **SMS/messaging is pluggable & dev-stubbed.** OTP and outbound messages go through the `SmsProvider` /
+  dispatch seams whose dev implementations log to the console; real Termii/Twilio impls drop in behind them.
+- **Phone numbers are Nigerian E.164 (`234…`)** — normalize with `normalizeNgPhone` before any lookup/insert.
+- **ESLint** uses `eslint.config.mjs` (flat), importing `eslint-config-next/core-web-vitals` and
+  `eslint-config-next/typescript` arrays directly (FlatCompat crashes on ESLint 9 + these plugins);
+  `legacy/**` and `apps/**` are ignored there and excluded in `tsconfig.json`.
+- **`MIGRATION.md`** is the authoritative target spec (its Phase-1 deletions are already done); `README.md`
+  is the current product/usage guide. Both describe the live app.
 
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->

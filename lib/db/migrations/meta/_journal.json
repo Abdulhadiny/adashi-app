@@ -8,6 +8,13 @@
       "when": 1787127330172,
       "tag": "0000_long_purifiers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787380036767,
+      "tag": "0001_fixed_shadow_king",
+      "breakpoints": true
     }
   ]
 }

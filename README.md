@@ -39,7 +39,7 @@ server-side data layer — there is no RLS.
 | Framework | Next.js 16 (App Router, React 19, TypeScript strict) |
 | Database | PostgreSQL 16 (Docker for local dev) |
 | ORM / migrations | Drizzle ORM + drizzle-kit |
-| Auth | Auth.js / NextAuth v5 — **phone + OTP**, JWT sessions |
+| Auth | Auth.js / NextAuth v5 — **phone + PIN** login (OTP for onboarding & PIN reset), JWT sessions |
 | Access control | Server-side data layer (`lib/data`) — no RLS |
 | Styling | CSS-variable design tokens + glass-morphism (`app/globals.css`), `lucide-react` icons |
 | Package manager | npm |
@@ -56,25 +56,36 @@ There is **no test runner**; verification is `npm run build` (which type-checks)
 | **Agent** | `/agent` | Self-register (pending approval), provision/link savers by phone, start savings **cycles**, mark **daily deposits** on a 31-day card, **close** a cycle (deducting commission → payout), resolve disputes. |
 | **Participant** | `/participant` | View savings dashboard & per-plan 31-day calendar, running balance, and **raise disputes** on a recorded deposit. |
 
-### Authentication (single-auth, phone + OTP)
+### Authentication (single-auth, phone + PIN, OTP for onboarding)
 
-Every role logs in the same way — enter a phone number at `/login`, receive a 6-digit OTP, verify. There
-is **one `users` table with a `role` column**; a signed **JWT** carries `{ id, role, phone }`, and the
-edge **proxy** (`proxy.ts`, Next 16's renamed middleware) gates each route group by role.
+Every role logs in the same way, through one `/login` with two modes. There is **one `users` table with a
+`role` column**; a signed **JWT** carries `{ id, role, phone }`, and the edge **proxy** (`proxy.ts`, Next
+16's renamed middleware) gates each route group by role.
 
-- **Agents** self-register at `/signup` (phone + name + business) → created with `approval_status =
-  pending_approval`; they can log in but see a **pending screen** until an admin approves them.
+- **PIN sign-in (default).** Returning users enter phone + a 6-digit PIN — **no SMS is sent**, so login
+  costs nothing and works instantly in the field. A PIN is hashed with per-user scrypt (`lib/auth/pin.ts`);
+  the real protection against guessing is a **server-side lockout** — 5 wrong attempts locks the account
+  for 15 minutes (state on `users.pin_failed_attempts` / `pin_locked_until`).
+- **OTP (onboarding + reset).** First-ever login and "forgot PIN" use a 6-digit OTP: `/login` → "one-time
+  code" → `/verify`. A first successful OTP **activates a provisioned participant** and then routes to
+  `/set-pin` to choose a PIN. OTP issuance is capped at **3 codes per phone per 15 min** to blunt
+  SMS-pumping abuse. This is the only path that sends SMS, so it's where the pluggable provider cost lands.
+- **Agents** self-register at `/signup` (phone + name + business) → `approval_status = pending_approval`;
+  they log in (first via OTP, then set a PIN) but see a **pending screen** until an admin approves them.
 - **Participants** are **provisioned by an agent** (not self-registered), created `status = 'pending'`,
-  and **auto-activate on their first successful OTP**. Savers without their own phone are simply managed
-  by their agent.
+  and auto-activate on first OTP. Savers without their own phone are simply managed by their agent.
 
 ```mermaid
 flowchart LR
-  L["/login — phone"] --> O["OTP (dev: server console)"]
+  L["/login"] -->|has PIN| PIN["phone + PIN"]
+  L -->|first time / forgot| O["OTP (dev: server console)"]
   O --> V["/verify — code"]
-  V -->|role=admin| A["/admin"]
-  V -->|role=agent| G{"approved?"}
-  V -->|role=participant| P["/participant"]
+  V -->|no PIN yet| SP["/set-pin"]
+  SP --> H{role}
+  PIN --> H
+  H -->|admin| A["/admin"]
+  H -->|agent| G{"approved?"}
+  H -->|participant| P["/participant"]
   G -->|yes| GA["/agent app"]
   G -->|no| GP["Pending-approval screen"]
 ```
@@ -123,10 +134,6 @@ AUTH_TRUST_HOST=true
 # optional SMS provider vars are documented (commented) in .env.example
 ```
 
-> **Port 5433, not 5432.** The bundled `docker-compose.yml` publishes Postgres on host port **5433** so
-> it doesn't collide with a native Postgres install commonly on 5432. If nothing else uses 5432, you can
-> change the compose mapping and the URL to `5432`.
-
 Both files are gitignored.
 
 ### 3. Database
@@ -148,19 +155,21 @@ npm run dev                      # http://localhost:3000
 
 ## Seeded accounts & dev login
 
-`npm run db:seed` creates a demo dataset. **In development there is no real SMS** — the OTP is printed to
-the **dev-server console** (the terminal running `npm run dev`). Enter the phone at `/login`, read the
-code from that console, and verify.
+`npm run db:seed` creates a demo dataset. Seeded active users get **PIN `123456`** — sign in with phone +
+PIN for an instant login. For the OTP path (or the pending participant's first login), **there is no real
+SMS in development** — the code is printed to the **dev-server console** (the terminal running `npm run
+dev`); pick "one-time code" at `/login`, read it from that console, and verify.
 
-| Role | Phone | Notes |
-|------|-------|-------|
-| Admin | `2348000000001` | Full admin console. |
-| Agent | `2348000000002` (Okafor Savings Co.) | Created **pending approval** — approve from the admin Approvals page to unlock the agent app. |
-| Agent | `2348000000003` (Bello Thrift & Credit) | Pending approval. |
-| Participant | `2348000000004` (Ngozi) | **Active**, has a plan with 5 deposits (₦2,500 saved). |
-| Participant | `2348000000005` (Tunde) | **Pending** — activates on first OTP login. |
+| Role | Phone | PIN | Notes |
+|------|-------|-----|-------|
+| Admin | `2348000000001` | `123456` | Full admin console. |
+| Agent | `2348000000002` (Okafor Savings Co.) | `123456` | Created **pending approval** — approve from the admin Approvals page to unlock the agent app. |
+| Agent | `2348000000003` (Bello Thrift & Credit) | `123456` | Pending approval. |
+| Participant | `2348000000004` (Ngozi) | `123456` | **Active**, has a plan with 5 deposits (₦2,500 saved). |
+| Participant | `2348000000005` (Tunde) | — | **Pending** — no PIN yet; first login is via OTP, then set a PIN. |
 
-You can also type a local format (e.g. `08000000001`); numbers are normalized to `234…`.
+You can also type a local format (e.g. `08000000001`); numbers are normalized to `234…`. Re-running
+`npm run db:seed` on an existing database backfills PINs for the four active users without touching other data.
 
 ## Walkthroughs
 
@@ -187,16 +196,17 @@ You can also type a local format (e.g. `08000000001`); numbers are normalized to
 
 ```
 app/
-  (auth)/         login, verify, signup
+  (auth)/         login (PIN + OTP), verify, set-pin, signup
   (admin)/admin/  home, agents, approvals, ledger, disputes, notifications (+ per-page actions.ts)
   (agent)/agent/  home, participants, cycles/[id], disputes, history, settings, actions.ts, layout (pending gate)
   (participant)/participant/  home, cycles/[id], disputes, settings, actions.ts
   api/
     auth/[...nextauth]   Auth.js handlers
-    otp/send             POST { phone } → issue + dispatch an OTP
+    otp/send             POST { phone } → issue + dispatch an OTP (capped per phone/window)
 lib/
   db/       schema.ts, client.ts (postgres.js singleton), migrations/, seed.ts
-  auth/     auth.config.ts (edge-safe), auth.ts (Node), otp.ts (OTP + SmsProvider), phone.ts
+  auth/     auth.config.ts (edge-safe), auth.ts (Node, PIN + OTP authorize), otp.ts (OTP + SmsProvider),
+            pin.ts (scrypt PIN hash + lockout constants), phone.ts
   data/     session.ts (requireRole), admin.ts, agents.ts, approvals.ts, ledger.ts, disputes.ts,
             notifications.ts, agent.ts, participant.ts   ← the RBAC boundary
   notifications/  dispatch.ts (agent-approval + participant message seams)
@@ -212,7 +222,8 @@ legacy/      archived Vite + Supabase apps (reference only; legacy/_deprecated i
 Core tables (`lib/db/schema.ts`):
 
 - **`users`** — one row per identity; `phone` (unique), `full_name`, `role` (`admin|agent|participant`),
-  `status` (`pending|active|suspended`).
+  `status` (`pending|active|suspended`), and PIN-login state (`pin_hash`, `pin_failed_attempts`,
+  `pin_locked_until`; `pin_hash` is null until the user sets a PIN).
 - **`agent_profiles`** — `business_name`, `approval_status` (`pending_approval|active|suspended|rejected`).
 - **`participant_profiles`** — `nickname`, `photo_url`, `registered_by_agent_id`.
 - **`agent_participants`** — M:N link (the source of truth for which savers belong to an agent).

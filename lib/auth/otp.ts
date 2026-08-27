@@ -1,12 +1,17 @@
 // OTP generation, hashing, storage, dispatch, and single-use verification.
 // Node-only (uses `crypto` + the DB). Never import from edge/client code.
 import { createHmac, randomInt, timingSafeEqual } from "crypto";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { otpCodes } from "@/lib/db/schema";
 import { normalizeNgPhone } from "./phone";
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// SMS cost guard: at most N codes per phone per window. Requests beyond the cap
+// are dropped silently (uniform response preserves anti-enumeration) so a bot
+// hammering /api/otp/send can't run up the SMS bill (SMS-pumping fraud).
+const OTP_ISSUE_WINDOW_MS = 15 * 60 * 1000;
+const OTP_MAX_PER_WINDOW = 3;
 
 function authSecret(): string {
   const s = process.env.AUTH_SECRET;
@@ -50,6 +55,15 @@ export function getSmsProvider(): SmsProvider {
 export async function issueOtp(rawPhone: string): Promise<void> {
   const phone = normalizeNgPhone(rawPhone);
   if (!phone) return;
+
+  const [{ recent }] = await db
+    .select({ recent: count() })
+    .from(otpCodes)
+    .where(
+      and(eq(otpCodes.phone, phone), gt(otpCodes.createdAt, new Date(Date.now() - OTP_ISSUE_WINDOW_MS))),
+    );
+  if (recent >= OTP_MAX_PER_WINDOW) return;
+
   const code = generateOtp();
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
   await db.insert(otpCodes).values({ phone, codeHash: hashOtp(code), expiresAt });
