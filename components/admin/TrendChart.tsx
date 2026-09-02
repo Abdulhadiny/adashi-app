@@ -34,15 +34,15 @@ export function TrendChart({ data }: { data: TrendPoint[] }) {
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ minWidth: 480, display: "block" }} role="img">
         <defs>
           <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10B981" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#10B981" stopOpacity="0" />
+            <stop offset="0%" stopColor="#4C82E0" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#4C82E0" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path d={areaPath} fill="url(#trend-fill)" />
-        <path d={linePath} fill="none" stroke="#10B981" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={linePath} fill="none" stroke="#4C82E0" strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
           <g key={i}>
-            <circle cx={p.x} cy={p.y} r={3.5} fill="#10B981" />
+            <circle cx={p.x} cy={p.y} r={3.5} fill="#4C82E0" />
             <text
               x={p.x}
               y={H - 10}

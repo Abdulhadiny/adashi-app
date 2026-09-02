@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { LayoutDashboard, Settings as SettingsIcon, ShieldAlert } from "lucide-react";
 import { LogoIcon } from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
+import type { MyNotification } from "@/lib/data/inapp";
 
 const NAV = [
   { href: "/participant", label: "Savings", icon: LayoutDashboard, exact: true },
@@ -14,9 +16,13 @@ const NAV = [
 
 export default function ParticipantShell({
   name,
+  notifications,
+  unread,
   children,
 }: {
   name: string;
+  notifications: MyNotification[];
+  unread: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -52,7 +58,10 @@ export default function ParticipantShell({
             <LogoIcon size={26} />
             <span style={{ fontWeight: 700, fontSize: 15 }}>{name ? `Hi, ${name.split(" ")[0]}` : "My Savings"}</span>
           </div>
-          <ThemeToggle />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <NotificationBell items={notifications} unread={unread} />
+            <ThemeToggle />
+          </div>
         </header>
 
         <main style={{ flex: 1, overflowY: "auto", padding: "16px 16px 88px" }}>{children}</main>
@@ -82,7 +91,7 @@ export default function ParticipantShell({
                   padding: "10px 0",
                   fontSize: 11,
                   fontWeight: 600,
-                  color: active ? "#10B981" : "hsl(var(--text-muted))",
+                  color: active ? "hsl(var(--brand-fg))" : "hsl(var(--text-muted))",
                 }}
               >
                 <Icon size={20} />

@@ -3,16 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { agentApprovalsAudit, agentProfiles, users } from "@/lib/db/schema";
+import { agentProfiles, users } from "@/lib/db/schema";
 import { requireRole } from "@/lib/data/session";
 import { getAuditLog } from "@/lib/data/approvals";
-import { dispatchAgentApprovalNotification } from "@/lib/notifications/dispatch";
+import { createNotification, recordAudit } from "@/lib/notifications/inapp";
 
 async function decide(agentId: string, action: "approved" | "rejected", note?: string) {
   const { userId: adminId } = await requireRole("admin");
 
   const [agent] = await db
-    .select({ fullName: users.fullName, phone: users.phone })
+    .select({ fullName: users.fullName })
     .from(users)
     .where(eq(users.id, agentId))
     .limit(1);
@@ -23,15 +23,25 @@ async function decide(agentId: string, action: "approved" | "rejected", note?: s
     .set({ approvalStatus: action === "approved" ? "active" : "rejected" })
     .where(eq(agentProfiles.userId, agentId));
 
-  await db.insert(agentApprovalsAudit).values({ agentId, adminId, action, note: note ?? null });
+  // Audit trail (single source for the admin Audit Logs page + per-agent History).
+  await recordAudit({
+    actorId: adminId,
+    action: action === "approved" ? "agent_approved" : "agent_rejected",
+    entityType: "agent",
+    entityId: agentId,
+    summary: `${action === "approved" ? "Approved" : "Rejected"} agent ${agent.fullName}`,
+    note: note ?? null,
+  });
 
-  // Non-fatal: dispatch + record the outbound notification.
-  await dispatchAgentApprovalNotification({
-    agentId,
-    agentName: agent.fullName,
-    agentPhone: agent.phone,
-    action,
-    note,
+  // In-app: tell the agent the outcome (welcome on approval).
+  await createNotification({
+    recipientId: agentId,
+    type: action === "approved" ? "agent_approved" : "agent_rejected",
+    title: action === "approved" ? "Welcome to Adashi" : "Application update",
+    body:
+      action === "approved"
+        ? "Your agent account has been approved. You can now sign in and start onboarding savers."
+        : `Your agent application was not approved${note ? `: ${note}` : "."}`,
   });
 
   revalidatePath("/admin/approvals");

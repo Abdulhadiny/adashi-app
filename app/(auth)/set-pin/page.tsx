@@ -36,7 +36,7 @@ export default function SetPinPage() {
     <form onSubmit={onSubmit} className="glass-card animate-fade-in" style={{ width: 380, maxWidth: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <LogoIcon size={36} />
-        <span style={{ fontSize: 22, fontWeight: 800, color: "#10B981" }}>Adashi</span>
+        <span className="brand-wordmark" style={{ fontSize: 22, fontWeight: 800 }}>Adashi</span>
       </div>
       <h1 style={{ margin: "6px 0 4px", fontSize: 18 }}>Create your PIN</h1>
       <p style={{ margin: "0 0 20px", color: "hsl(var(--text-secondary))", fontSize: 14 }}>

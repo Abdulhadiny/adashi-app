@@ -31,7 +31,7 @@ export default function SignupPage() {
     <form onSubmit={onSubmit} className="glass-card animate-fade-in" style={{ width: 400, maxWidth: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <LogoIcon size={36} />
-        <span style={{ fontSize: 22, fontWeight: 800, color: "#10B981" }}>Adashi</span>
+        <span className="brand-wordmark" style={{ fontSize: 22, fontWeight: 800 }}>Adashi</span>
       </div>
       <h1 style={{ margin: "6px 0 4px", fontSize: 18 }}>Become an agent</h1>
       <p style={{ margin: "0 0 20px", color: "hsl(var(--text-secondary))", fontSize: 14 }}>
@@ -71,7 +71,7 @@ export default function SignupPage() {
       </button>
       <p style={{ marginTop: 14, fontSize: 13, color: "hsl(var(--text-muted))", textAlign: "center" }}>
         Already have an account?{" "}
-        <Link href="/login" style={{ color: "hsl(var(--accent-emerald))" }}>
+        <Link href="/login" style={{ color: "hsl(var(--brand-fg))" }}>
           Sign in
         </Link>
       </p>

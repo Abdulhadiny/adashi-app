@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LogoIcon } from "@/components/Logo";
 import { needsPinAction } from "../set-pin/actions";
+import { formatNgPhone } from "@/lib/format";
 
 function VerifyInner() {
   const router = useRouter();
@@ -34,11 +35,11 @@ function VerifyInner() {
     <form onSubmit={onSubmit} className="glass-card animate-fade-in" style={{ width: 380, maxWidth: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <LogoIcon size={36} />
-        <span style={{ fontSize: 22, fontWeight: 800, color: "#10B981" }}>Adashi</span>
+        <span className="brand-wordmark" style={{ fontSize: 22, fontWeight: 800 }}>Adashi</span>
       </div>
       <h1 style={{ margin: "6px 0 4px", fontSize: 18 }}>Enter your code</h1>
       <p style={{ margin: "0 0 20px", color: "hsl(var(--text-secondary))", fontSize: 14 }}>
-        We sent a 6-digit code to {phone || "your phone"}.
+        We sent a 6-digit code to {phone ? formatNgPhone(phone) : "your phone"}.
       </p>
       <label style={label}>One-time code</label>
       <input

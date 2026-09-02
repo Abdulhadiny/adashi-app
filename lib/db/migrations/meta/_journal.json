@@ -15,6 +15,20 @@
       "when": 1787380036767,
       "tag": "0001_fixed_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788092045852,
+      "tag": "0002_wise_kinsey_walden",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788092067109,
+      "tag": "0003_optimal_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

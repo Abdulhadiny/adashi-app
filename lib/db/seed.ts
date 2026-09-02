@@ -9,7 +9,7 @@ import {
   agentProfiles,
   cycles,
   disputes,
-  notifications,
+  inAppNotifications,
   participantProfiles,
   transactions,
   users,
@@ -50,13 +50,16 @@ async function main() {
   }
 
   // Admin
-  await db.insert(users).values({
-    phone: ADMIN_PHONE,
-    fullName: "Adashi Admin",
-    role: "admin",
-    status: "active",
-    pinHash: hashPin(SEED_PIN),
-  });
+  const [admin] = await db
+    .insert(users)
+    .values({
+      phone: ADMIN_PHONE,
+      fullName: "Adashi Admin",
+      role: "admin",
+      status: "active",
+      pinHash: hashPin(SEED_PIN),
+    })
+    .returning({ id: users.id });
 
   // Two pending-approval agents (so the Approvals queue is non-empty)
   const [agent1] = await db
@@ -159,16 +162,36 @@ async function main() {
     status: "open",
   });
 
-  await db.insert(notifications).values({
-    transactionId: txs[0].id,
-    participantId: p1.id,
-    agentId: agent1.id,
-    channel: "whatsapp",
-    templateName: "adashi_deposit_v1",
-    templateParams: { message: "Your deposit of ₦500 was received." },
-    status: "sent",
-    sentAt: new Date(),
-  });
+  // In-app notifications so the bells are non-empty in dev: the admin sees the two
+  // pending agents awaiting approval; the participant sees their onboarding + a deposit.
+  await db.insert(inAppNotifications).values([
+    {
+      recipientId: admin.id,
+      type: "agent_registered",
+      title: "New agent awaiting approval",
+      body: "Okafor Savings Co. — Chidi Okafor has registered and is awaiting review.",
+      href: "/admin/approvals",
+    },
+    {
+      recipientId: admin.id,
+      type: "agent_registered",
+      title: "New agent awaiting approval",
+      body: "Bello Thrift & Credit — Amina Bello has registered and is awaiting review.",
+      href: "/admin/approvals",
+    },
+    {
+      recipientId: p1.id,
+      type: "onboarding",
+      title: "Welcome to Adashi",
+      body: "You have been registered by Chidi Okafor. Your savings journey starts now.",
+    },
+    {
+      recipientId: p1.id,
+      type: "deposit",
+      title: "Deposit recorded",
+      body: "Chidi Okafor recorded your ₦500 deposit for day 5. Balance: ₦2,500.",
+    },
+  ]);
 
   console.log(`
   Seeded successfully.

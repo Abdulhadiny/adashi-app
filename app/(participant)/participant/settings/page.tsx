@@ -1,5 +1,6 @@
 import { getParticipantContext } from "@/lib/data/participant";
 import SignOutButton from "@/components/SignOutButton";
+import { formatNgPhone } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function ParticipantSettingsPage() {
       <div className="glass-card" style={{ padding: 16 }}>
         <Row label="Name" value={ctx.fullName} />
         {ctx.nickname && <Row label="Nickname" value={ctx.nickname} />}
-        <Row label="Phone" value={ctx.phone} />
+        <Row label="Phone" value={formatNgPhone(ctx.phone)} />
       </div>
 
       <SignOutButton

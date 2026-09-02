@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formatDateTime, formatNaira } from "@/lib/format";
+import { formatDateTime, formatNaira, formatNgPhone, ngPhoneSearchNeedle } from "@/lib/format";
 import type { LedgerRow } from "@/lib/data/ledger";
 
 interface AgentOption {
@@ -43,10 +43,13 @@ export default function LedgerClient({
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return rows;
+    // Phones are stored E.164 (234…) but shown as 0803…; match on the E.164
+    // needle so typing either form (or a bare fragment) finds the row.
+    const phone = ngPhoneSearchNeedle(search);
     return rows.filter(
       (r) =>
         r.participantName?.toLowerCase().includes(term) ||
-        r.participantPhone?.toLowerCase().includes(term) ||
+        (phone && r.participantPhone?.includes(phone)) ||
         r.agentName?.toLowerCase().includes(term) ||
         r.agentBusiness?.toLowerCase().includes(term),
     );
@@ -118,7 +121,7 @@ export default function LedgerClient({
                 <td>{formatDateTime(r.createdAt)}</td>
                 <td style={{ color: "hsl(var(--text-primary))" }}>
                   {r.participantName}
-                  <span style={{ color: "hsl(var(--text-muted))" }}> · {r.participantPhone}</span>
+                  <span style={{ color: "hsl(var(--text-muted))" }}> · {formatNgPhone(r.participantPhone)}</span>
                 </td>
                 <td>{r.agentBusiness ?? r.agentName}</td>
                 <td>

@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatNgPhone } from "@/lib/format";
 import type { PendingAgent } from "@/lib/data/approvals";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { approveAgentAction, getAuditLogAction, rejectAgentAction } from "./actions";
 
 type AuditRows = Awaited<ReturnType<typeof getAuditLogAction>>;
@@ -22,6 +23,7 @@ export default function ApprovalsClient({
   search: string;
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [term, setTerm] = useState(search);
   const [rejecting, setRejecting] = useState<PendingAgent | null>(null);
   const [historyFor, setHistoryFor] = useState<PendingAgent | null>(null);
@@ -43,7 +45,13 @@ export default function ApprovalsClient({
     router.push(`/admin/approvals${qs.toString() ? `?${qs}` : ""}`);
   }
 
-  function approve(agent: PendingAgent) {
+  async function approve(agent: PendingAgent) {
+    const ok = await confirm({
+      title: `Approve ${agent.businessName}?`,
+      message: `${agent.fullName} will be granted agent access and can start collecting deposits.`,
+      confirmLabel: "Approve",
+    });
+    if (!ok) return;
     setPendingId(agent.id);
     startTransition(async () => {
       try {
@@ -98,7 +106,7 @@ export default function ApprovalsClient({
               <tr key={a.id}>
                 <td style={{ color: "hsl(var(--text-primary))", fontWeight: 600 }}>{a.businessName}</td>
                 <td>{a.fullName}</td>
-                <td>{a.phone}</td>
+                <td>{formatNgPhone(a.phone)}</td>
                 <td>{formatDate(a.createdAt)}</td>
                 <td style={{ textAlign: "right" }}>
                   <div style={{ display: "inline-flex", gap: 8 }}>
@@ -211,15 +219,24 @@ function HistoryModal({ agent, onClose }: { agent: PendingAgent; onClose: () => 
         )}
         {audit && audit.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {audit.map((a) => (
-              <div key={a.id} style={{ borderBottom: "1px solid hsl(var(--border-glass))", paddingBottom: 8 }}>
-                <span className={`badge ${a.action === "approved" ? "emerald" : "coral"}`}>{a.action}</span>
-                <span style={{ color: "hsl(var(--text-muted))", fontSize: 12, marginLeft: 8 }}>
-                  {formatDateTime(a.createdAt)}
-                </span>
-                {a.note && <p style={{ color: "hsl(var(--text-secondary))", margin: "4px 0 0" }}>{a.note}</p>}
-              </div>
-            ))}
+            {audit.map((a) => {
+              const positive = a.action.includes("approved") || a.action.includes("activated");
+              const negative = a.action.includes("rejected") || a.action.includes("suspended");
+              const badge = positive ? "emerald" : negative ? "coral" : "muted";
+              return (
+                <div key={a.id} style={{ borderBottom: "1px solid hsl(var(--border-glass))", paddingBottom: 8 }}>
+                  <span className={`badge ${badge}`}>{a.action.replace(/_/g, " ")}</span>
+                  <span style={{ color: "hsl(var(--text-muted))", fontSize: 12, marginLeft: 8 }}>
+                    {formatDateTime(a.createdAt)}
+                    {a.actorName ? ` · ${a.actorName}` : ""}
+                  </span>
+                  <p style={{ color: "hsl(var(--text-secondary))", margin: "4px 0 0" }}>{a.summary}</p>
+                  {a.note && (
+                    <p style={{ color: "hsl(var(--text-muted))", margin: "2px 0 0", fontSize: 13 }}>{a.note}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

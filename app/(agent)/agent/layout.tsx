@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getAgentContext, type AgentContext } from "@/lib/data/agent";
+import { countMyUnread, listMyNotifications } from "@/lib/data/inapp";
 import AgentShell from "@/components/agent/AgentShell";
 import SignOutButton from "@/components/SignOutButton";
+import { formatNgPhone } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,13 @@ export default async function AgentLayout({ children }: { children: React.ReactN
     return <PendingGate ctx={ctx} />;
   }
 
-  return <AgentShell businessName={ctx.businessName}>{children}</AgentShell>;
+  const [notifications, unread] = await Promise.all([listMyNotifications(), countMyUnread()]);
+
+  return (
+    <AgentShell businessName={ctx.businessName} notifications={notifications} unread={unread}>
+      {children}
+    </AgentShell>
+  );
 }
 
 const GATE_COPY: Record<string, { title: string; body: string; badge: string }> = {
@@ -69,7 +77,7 @@ function PendingGate({ ctx }: { ctx: AgentContext }) {
         >
           <Row label="Business" value={ctx.businessName} />
           <Row label="Agent" value={ctx.fullName} />
-          <Row label="Phone" value={ctx.phone} />
+          <Row label="Phone" value={formatNgPhone(ctx.phone)} />
         </div>
         <SignOutButton style={{ width: "100%" }} />
       </div>

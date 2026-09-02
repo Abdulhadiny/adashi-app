@@ -1,27 +1,37 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import Link from "next/link";
-import { formatDate, formatNaira } from "@/lib/format";
+import { formatDate, formatNaira, formatNgPhone } from "@/lib/format";
 import type { AgentListItem } from "@/lib/data/agents";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { getAgentDetailAction, setAgentStatusAction } from "./actions";
 
 type AgentDetail = Awaited<ReturnType<typeof getAgentDetailAction>>;
 
-const STATUS_BADGE: Record<string, string> = {
-  active: "emerald",
-  suspended: "coral",
-  pending_approval: "gold",
-  rejected: "muted",
+// Directory only ever holds approved agents: active (Active) or suspended (Inactive).
+const STATUS_META: Record<string, { label: string; badge: string }> = {
+  active: { label: "Active", badge: "emerald" },
+  suspended: { label: "Inactive", badge: "muted" },
 };
 
 export default function AgentsClient({ agents }: { agents: AgentListItem[] }) {
+  const confirm = useConfirm();
   const [selected, setSelected] = useState<AgentListItem | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  function toggleStatus(agent: AgentListItem) {
-    const next = agent.approvalStatus === "active" ? "suspended" : "active";
+  async function toggleStatus(agent: AgentListItem) {
+    const suspending = agent.approvalStatus === "active";
+    const next = suspending ? "suspended" : "active";
+    const ok = await confirm({
+      title: suspending ? `Suspend ${agent.businessName}?` : `Activate ${agent.businessName}?`,
+      message: suspending
+        ? "The agent immediately loses access and can't collect deposits until reactivated."
+        : "The agent regains access and can collect deposits again.",
+      confirmLabel: suspending ? "Suspend" : "Activate",
+      tone: suspending ? "danger" : "default",
+    });
+    if (!ok) return;
     setPendingId(agent.id);
     startTransition(async () => {
       try {
@@ -60,10 +70,10 @@ export default function AgentsClient({ agents }: { agents: AgentListItem[] }) {
               <tr key={a.id}>
                 <td style={{ color: "hsl(var(--text-primary))", fontWeight: 600 }}>{a.businessName}</td>
                 <td>{a.fullName}</td>
-                <td>{a.phone}</td>
+                <td>{formatNgPhone(a.phone)}</td>
                 <td>
-                  <span className={`badge ${STATUS_BADGE[a.approvalStatus] ?? "muted"}`}>
-                    {a.approvalStatus.replace("_", " ")}
+                  <span className={`badge ${STATUS_META[a.approvalStatus]?.badge ?? "muted"}`}>
+                    {STATUS_META[a.approvalStatus]?.label ?? a.approvalStatus.replace("_", " ")}
                   </span>
                 </td>
                 <td>{formatDate(a.createdAt)}</td>
@@ -72,19 +82,13 @@ export default function AgentsClient({ agents }: { agents: AgentListItem[] }) {
                     <button className="btn btn-ghost" onClick={() => setSelected(a)}>
                       View
                     </button>
-                    {a.approvalStatus === "pending_approval" ? (
-                      <Link className="btn btn-emerald" href="/admin/approvals">
-                        Review
-                      </Link>
-                    ) : a.approvalStatus === "rejected" ? null : (
-                      <button
-                        className={a.approvalStatus === "active" ? "btn btn-coral" : "btn btn-emerald"}
-                        disabled={pendingId === a.id}
-                        onClick={() => toggleStatus(a)}
-                      >
-                        {pendingId === a.id ? "…" : a.approvalStatus === "active" ? "Suspend" : "Activate"}
-                      </button>
-                    )}
+                    <button
+                      className={a.approvalStatus === "active" ? "btn btn-coral" : "btn btn-emerald"}
+                      disabled={pendingId === a.id}
+                      onClick={() => toggleStatus(a)}
+                    >
+                      {pendingId === a.id ? "…" : a.approvalStatus === "active" ? "Suspend" : "Activate"}
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -127,7 +131,7 @@ function AgentDrawer({ agent, onClose }: { agent: AgentListItem; onClose: () => 
           <div>
             <h2 style={{ margin: 0, fontSize: 20 }}>{agent.businessName}</h2>
             <p style={{ color: "hsl(var(--text-muted))", margin: "4px 0" }}>
-              {agent.fullName} · {agent.phone}
+              {agent.fullName} · {formatNgPhone(agent.phone)}
             </p>
           </div>
           <button className="btn btn-ghost" onClick={onClose}>

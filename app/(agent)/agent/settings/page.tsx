@@ -1,5 +1,6 @@
 import { getAgentContext } from "@/lib/data/agent";
 import SignOutButton from "@/components/SignOutButton";
+import { formatNgPhone } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function AgentSettingsPage() {
       <div className="glass-card" style={{ padding: 16 }}>
         <Row label="Business" value={ctx.businessName} />
         <Row label="Agent" value={ctx.fullName} />
-        <Row label="Phone" value={ctx.phone} />
+        <Row label="Phone" value={formatNgPhone(ctx.phone)} />
         <Row label="Status" value={ctx.approvalStatus.replace("_", " ")} />
         <Row label="Version" value="v3 · Next.js" />
       </div>

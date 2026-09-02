@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ConfirmProvider from "@/components/ConfirmProvider";
 
 export const metadata: Metadata = {
   title: "Adashi",
@@ -19,7 +20,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ConfirmProvider>{children}</ConfirmProvider>
+      </body>
     </html>
   );
 }

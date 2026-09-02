@@ -52,7 +52,7 @@ There is **no test runner**; verification is `npm run build` (which type-checks)
 
 | Role | App | What they do |
 |------|-----|--------------|
-| **Admin** | `/admin` | KPIs & savings trend, agent directory, **approve/reject** agent applications, global transaction ledger, dispute mediation, notification logs. |
+| **Admin** | `/admin` | KPIs & savings trend, agent directory (approved agents only), **approve/reject** agent applications, global transaction ledger, dispute mediation, audit logs. In-app notifications on agent & saver registrations. |
 | **Agent** | `/agent` | Self-register (pending approval), provision/link savers by phone, start savings **cycles**, mark **daily deposits** on a 31-day card, **close** a cycle (deducting commission → payout), resolve disputes. |
 | **Participant** | `/participant` | View savings dashboard & per-plan 31-day calendar, running balance, and **raise disputes** on a recorded deposit. |
 
@@ -177,8 +177,9 @@ You can also type a local format (e.g. `08000000001`); numbers are normalized to
 1. Log in with `2348000000001`.
 2. **Overview** shows KPIs (gross volume, active agents, participants, open disputes, commission pool) and
    a 7-day deposit trend.
-3. **Approvals** → approve `Okafor Savings Co.` (writes an audit entry + queues an approval notification).
-4. Browse **Ledger**, **Disputes**, **Notifications**.
+3. **Approvals** (agents awaiting approval only) → approve `Okafor Savings Co.` (writes an audit entry +
+   sends the agent an in-app welcome; the agent now shows in the **Agents Directory** as Active).
+4. Browse **Ledger**, **Disputes**, **Audit Logs**; the header **bell** shows in-app notifications.
 
 **Agent** (approve the agent first, above)
 1. Log in with `2348000000002`.
@@ -197,7 +198,7 @@ You can also type a local format (e.g. `08000000001`); numbers are normalized to
 ```
 app/
   (auth)/         login (PIN + OTP), verify, set-pin, signup
-  (admin)/admin/  home, agents, approvals, ledger, disputes, notifications (+ per-page actions.ts)
+  (admin)/admin/  home, agents, approvals, ledger, disputes, audit (+ per-page actions.ts)
   (agent)/agent/  home, participants, cycles/[id], disputes, history, settings, actions.ts, layout (pending gate)
   (participant)/participant/  home, cycles/[id], disputes, settings, actions.ts
   api/
@@ -208,8 +209,8 @@ lib/
   auth/     auth.config.ts (edge-safe), auth.ts (Node, PIN + OTP authorize), otp.ts (OTP + SmsProvider),
             pin.ts (scrypt PIN hash + lockout constants), phone.ts
   data/     session.ts (requireRole), admin.ts, agents.ts, approvals.ts, ledger.ts, disputes.ts,
-            notifications.ts, agent.ts, participant.ts   ← the RBAC boundary
-  notifications/  dispatch.ts (agent-approval + participant message seams)
+            inapp.ts, agent.ts, participant.ts   ← the RBAC boundary
+  notifications/  inapp.ts (createNotification / notifyAdmins / recordAudit), actions.ts (mark-read)
   format.ts
 components/  Logo, ThemeToggle, SignOutButton, admin/, agent/, participant/
 proxy.ts     edge role gate (Next 16 middleware convention)
@@ -229,23 +230,25 @@ Core tables (`lib/db/schema.ts`):
 - **`agent_participants`** — M:N link (the source of truth for which savers belong to an agent).
 - **`cycles`** — a savings plan: `daily_amount`, `status`, `commission`, `payout_amount`, dates.
 - **`transactions`** — deposits/withdrawals, unique `(cycle, kind, day_of_cycle)`.
-- **`disputes`**, **`agent_approvals_audit`**, **`notifications`**, **`otp_codes`**.
+- **`disputes`**, **`audit_log`** (general admin/system trail), **`in_app_notifications`** (recipient-scoped),
+  **`otp_codes`**.
 
 ## Key concepts & conventions
 
 - **RBAC in the data layer.** Every `lib/data` function calls `requireRole(...)` (or `requireActiveAgent`)
   and scopes its query to the caller's id — this replaces RLS. Mutations are **server actions** that guard,
-  mutate, `revalidatePath`, and dispatch notifications.
+  mutate, `revalidatePath`, then create in-app notifications / audit rows.
 - **Edge/Node auth split.** `lib/auth/auth.config.ts` is edge-safe (callbacks only, no DB) and is what
   `proxy.ts` imports; `lib/auth/auth.ts` is Node-only (the Credentials `authorize` touches the DB). Never
   import `auth.ts`/`lib/db` from anything reachable by the proxy.
 - **Money as strings.** `numeric(12,2)` maps to a JS `string`; sums are done in **SQL**, never with JS
   `Number` math. Format at the UI edge with `formatNaira`.
-- **Notifications are dual-shape.** A DB `CHECK` allows either a full participant notification
-  (participant + agent + channel) or an agent-only one (approvals: agent set, participant/channel null).
-- **SMS is pluggable & stubbed.** OTP and outbound messages go through `SmsProvider` / `MessageProvider`
-  interfaces; the dev implementations log to the console. Real Termii/Twilio implementations drop in behind
-  them for production.
+- **In-app notifications.** `in_app_notifications` is recipient-scoped (`recipient_id`, `read_at`); a
+  `NotificationBell` in each shell shows the caller's own. Written from server actions via
+  `createNotification` / `notifyAdmins`. Recording a deposit produces a **shareable receipt image**
+  (canvas → PNG, Web Share / download) instead of an outbound message.
+- **SMS is OTP-only & stubbed.** The `SmsProvider` interface in `lib/auth/otp.ts` now carries only the
+  login OTP; the dev implementation logs to the console, a real Termii/Twilio impl drops in behind it.
 - **Drizzle wraps DB errors** — a Postgres error code (e.g. unique violation `23505`) is on `e.cause.code`,
   not `e.code`.
 
@@ -282,6 +285,5 @@ Not built yet. The production checklist:
   screen (replacing the old Capacitor Android wrapper).
 - **Managed Postgres** (e.g. Neon) — set `DATABASE_URL`; run `npm run db:migrate` on deploy.
 - **Secrets** — `AUTH_SECRET`, `AUTH_TRUST_HOST`, and (once wired) the SMS provider keys.
-- **Real SMS** — implement Termii/Twilio behind the `SmsProvider` / `MessageProvider` seams and select via
-  an env flag.
+- **Real SMS** — implement Termii/Twilio behind the `SmsProvider` seam (login OTP) and select via an env flag.
 - **Host** — `next build` + `next start` on your platform of choice.
