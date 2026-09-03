@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { History, LayoutDashboard, Settings as SettingsIcon, ShieldAlert, Users } from "lucide-react";
 import { LogoIcon } from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
+import NotificationBell from "@/components/NotificationBell";
+import type { MyNotification } from "@/lib/data/inapp";
 
 const NAV = [
   { href: "/agent", label: "Home", icon: LayoutDashboard, exact: true },
@@ -16,9 +18,13 @@ const NAV = [
 
 export default function AgentShell({
   businessName,
+  notifications,
+  unread,
   children,
 }: {
   businessName: string;
+  notifications: MyNotification[];
+  unread: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -55,7 +61,10 @@ export default function AgentShell({
             <LogoIcon size={26} />
             <span style={{ fontWeight: 700, fontSize: 15 }}>{businessName || "Adashi Agent"}</span>
           </div>
-          <ThemeToggle />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <NotificationBell items={notifications} unread={unread} />
+            <ThemeToggle />
+          </div>
         </header>
 
         <main style={{ flex: 1, overflowY: "auto", padding: "16px 16px 88px" }}>{children}</main>
@@ -85,7 +94,7 @@ export default function AgentShell({
                   padding: "10px 0",
                   fontSize: 11,
                   fontWeight: 600,
-                  color: active ? "#10B981" : "hsl(var(--text-muted))",
+                  color: active ? "hsl(var(--brand-fg))" : "hsl(var(--text-muted))",
                 }}
               >
                 <Icon size={20} />

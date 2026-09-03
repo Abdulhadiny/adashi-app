@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { formatDateTime, formatNaira } from "@/lib/format";
+import { formatDateTime, formatNaira, formatNgPhone } from "@/lib/format";
 import type { DisputeRow } from "@/lib/data/disputes";
 import { resolveDisputeAction } from "./actions";
 
@@ -24,7 +24,7 @@ export default function DisputesClient({ disputes }: { disputes: DisputeRow[] })
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                   <span className="badge coral">open</span>
                   <strong style={{ color: "hsl(var(--text-primary))" }}>{d.participantName}</strong>
-                  <span style={{ color: "hsl(var(--text-muted))", fontSize: 13 }}>· {d.participantPhone}</span>
+                  <span style={{ color: "hsl(var(--text-muted))", fontSize: 13 }}>· {formatNgPhone(d.participantPhone)}</span>
                 </div>
                 <p style={{ color: "hsl(var(--text-secondary))", margin: "4px 0" }}>{d.reason}</p>
                 <div style={{ fontSize: 13, color: "hsl(var(--text-muted))" }}>

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getParticipantContext, type ParticipantContext } from "@/lib/data/participant";
+import { countMyUnread, listMyNotifications } from "@/lib/data/inapp";
 import ParticipantShell from "@/components/participant/ParticipantShell";
 
 export const dynamic = "force-dynamic";
@@ -11,5 +12,12 @@ export default async function ParticipantLayout({ children }: { children: React.
   } catch {
     redirect("/login");
   }
-  return <ParticipantShell name={ctx.fullName}>{children}</ParticipantShell>;
+
+  const [notifications, unread] = await Promise.all([listMyNotifications(), countMyUnread()]);
+
+  return (
+    <ParticipantShell name={ctx.fullName} notifications={notifications} unread={unread}>
+      {children}
+    </ParticipantShell>
+  );
 }

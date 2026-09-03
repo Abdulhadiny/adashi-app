@@ -1,33 +1,43 @@
-/* Adashi — design tokens + glass-morphism system, ported from the legacy
-   @adashi/ui theme and admin app CSS. HSL-channel vars consumed as
-   hsl(var(--token)) / hsl(var(--token) / alpha). Dark is default; light via
-   :root[data-theme="light"] / .light-theme. */
+/* Adashi — design tokens + glass-morphism system. Brand: Rexcel-style royal
+   blue + deep navy. HSL-channel vars consumed as hsl(var(--token)) /
+   hsl(var(--token) / alpha). Dark is default; light via
+   :root[data-theme="light"] / .light-theme.
 
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap");
+   Fonts: Sora (display/headings) + Inter (body/UI). */
+
+@import url("https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap");
 
 :root {
-  --font-sans: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
     sans-serif;
+  --font-display: "Sora", var(--font-sans);
 
-  /* Surfaces */
-  --bg-dark: 220 15% 8%;
-  --bg-card: 220 15% 12%;
-  --border-glass: 220 15% 20% / 0.15;
+  /* Surfaces — subtle navy temperature */
+  --bg-dark: 221 28% 9%;
+  --bg-card: 221 24% 13%;
+  --border-glass: 221 20% 32% / 0.18;
 
-  /* Accents (each with a translucent -glow variant) */
-  --accent-emerald: 150 84% 45%;
-  --accent-emerald-glow: 150 84% 45% / 0.15;
-  --accent-gold: 38 92% 50%;
-  --accent-gold-glow: 38 92% 50% / 0.15;
-  --accent-coral: 354 84% 57%;
-  --accent-coral-glow: 354 84% 57% / 0.15;
-  --accent-cobalt: 217 91% 60%;
-  --accent-cobalt-glow: 217 91% 60% / 0.15;
+  /* Brand (royal blue → deep navy, Rexcel-style) */
+  --brand: 219 66% 54%; /* solid fills, primary button bg */
+  --brand-strong: 219 60% 40%; /* deep navy, gradient end */
+  --brand-fg: 219 84% 70%; /* accent text/links/icons on dark surfaces */
+  --brand-contrast: 0 0% 100%; /* text sitting on a brand fill */
+  --brand-glow: 219 84% 70% / 0.14;
+
+  /* Semantic status accents (each with a translucent -glow variant) */
+  --accent-emerald: 152 58% 47%; /* success / positive / money-in */
+  --accent-emerald-glow: 152 58% 47% / 0.15;
+  --accent-gold: 38 92% 55%; /* warning / pending */
+  --accent-gold-glow: 38 92% 55% / 0.15;
+  --accent-coral: 354 78% 62%; /* danger / negative */
+  --accent-coral-glow: 354 78% 62% / 0.15;
+  --accent-cobalt: 205 82% 58%; /* info / secondary metric */
+  --accent-cobalt-glow: 205 82% 58% / 0.15;
 
   /* Text */
-  --text-primary: 210 20% 98%;
-  --text-secondary: 210 10% 70%;
-  --text-muted: 210 10% 50%;
+  --text-primary: 214 30% 97%;
+  --text-secondary: 214 14% 72%;
+  --text-muted: 214 12% 52%;
 
   /* Radii / effects */
   --radius-sm: 8px;
@@ -58,9 +68,31 @@ a {
   text-decoration: none;
 }
 
+/* Headings use the display face */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Gradient brand wordmark (Rexcel-style two-tone) */
+.brand-wordmark {
+  font-family: var(--font-display);
+  background-image: linear-gradient(135deg, hsl(var(--brand-fg)), hsl(var(--brand)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.02em;
+}
+
 /* ── Glass card ─────────────────────────────────────────────────────────── */
 .glass-card {
-  background: rgba(20, 23, 31, 0.65);
+  background: rgba(20, 26, 40, 0.62);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid rgba(255, 255, 255, 0.05);
@@ -94,6 +126,9 @@ a {
   width: 4px;
   height: 100%;
 }
+.kpi-card.brand::before {
+  background-color: hsl(var(--brand));
+}
 .kpi-card.emerald::before {
   background-color: hsl(var(--accent-emerald));
 }
@@ -114,8 +149,10 @@ a {
   letter-spacing: 0.05em;
 }
 .kpi-value {
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: hsl(var(--text-primary));
 }
 .kpi-subtext {
@@ -135,21 +172,23 @@ a {
   font-size: 16px;
   transition:
     border-color 0.2s ease,
-    background 0.2s ease;
+    background 0.2s ease,
+    box-shadow 0.2s ease;
   outline: none;
 }
 .input-field:focus {
-  border-color: hsl(var(--accent-emerald));
+  border-color: hsl(var(--brand-fg));
   background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px hsl(var(--brand-glow));
 }
 
 .btn-primary {
   width: 100%;
   padding: 14px;
-  background: hsl(var(--accent-emerald));
+  background: hsl(var(--brand));
   border: none;
   border-radius: var(--radius-sm);
-  color: hsl(var(--bg-dark));
+  color: hsl(var(--brand-contrast));
   font-family: var(--font-sans);
   font-weight: 600;
   font-size: 16px;
@@ -159,7 +198,7 @@ a {
     transform 0.1s ease;
 }
 .btn-primary:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 .btn-primary:active {
   transform: scale(0.98);
@@ -169,7 +208,7 @@ a {
   cursor: not-allowed;
 }
 
-/* Compact button variants used across admin actions */
+/* Compact button variants used across admin/agent actions */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -193,10 +232,12 @@ a {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Primary/brand action (.btn-emerald kept as a back-compat alias) */
+.btn-brand,
 .btn-emerald {
-  background: hsl(var(--accent-emerald) / 0.12);
-  border-color: hsl(var(--accent-emerald) / 0.25);
-  color: hsl(var(--accent-emerald));
+  background: hsl(var(--brand-fg) / 0.14);
+  border-color: hsl(var(--brand-fg) / 0.3);
+  color: hsl(var(--brand-fg));
 }
 .btn-coral {
   background: hsl(var(--accent-coral) / 0.1);
@@ -208,6 +249,7 @@ a {
   border-color: hsl(var(--border-glass));
   color: hsl(var(--text-secondary));
 }
+.btn-brand:hover,
 .btn-emerald:hover,
 .btn-coral:hover,
 .btn-ghost:hover {
@@ -224,6 +266,10 @@ a {
   font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
+}
+.badge.brand {
+  background: hsl(var(--brand-fg) / 0.14);
+  color: hsl(var(--brand-fg));
 }
 .badge.emerald {
   background: hsl(var(--accent-emerald) / 0.12);
@@ -317,31 +363,38 @@ td {
 /* ── Light theme ────────────────────────────────────────────────────────── */
 :root[data-theme="light"],
 .light-theme {
-  --bg-dark: 210 20% 97%;
+  --bg-dark: 214 38% 97%;
   --bg-card: 0 0% 100%;
-  --border-glass: 210 20% 85% / 0.4;
-  --text-primary: 220 20% 12%;
-  --text-secondary: 215 15% 32%;
-  --text-muted: 215 15% 45%;
-  --accent-emerald: 150 84% 36%;
-  --accent-emerald-glow: 150 84% 45% / 0.08;
-  --accent-gold: 38 92% 40%;
-  --accent-gold-glow: 38 92% 50% / 0.08;
-  --accent-coral: 354 84% 48%;
-  --accent-coral-glow: 354 84% 57% / 0.08;
-  --accent-cobalt: 217 91% 48%;
-  --accent-cobalt-glow: 217 91% 60% / 0.08;
+  --border-glass: 214 25% 82% / 0.5;
+  --text-primary: 221 40% 14%;
+  --text-secondary: 217 20% 32%;
+  --text-muted: 217 15% 46%;
+
+  --brand: 219 68% 50%;
+  --brand-strong: 219 62% 34%;
+  --brand-fg: 219 72% 46%;
+  --brand-contrast: 0 0% 100%;
+  --brand-glow: 219 68% 50% / 0.12;
+
+  --accent-emerald: 152 62% 38%;
+  --accent-emerald-glow: 152 62% 38% / 0.1;
+  --accent-gold: 38 88% 42%;
+  --accent-gold-glow: 38 88% 42% / 0.1;
+  --accent-coral: 354 70% 50%;
+  --accent-coral-glow: 354 70% 50% / 0.1;
+  --accent-cobalt: 205 78% 44%;
+  --accent-cobalt-glow: 205 78% 44% / 0.1;
 }
 :root[data-theme="light"] .glass-card,
 .light-theme .glass-card {
   background: rgba(255, 255, 255, 0.75);
   border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.06);
+  box-shadow: 0 8px 32px 0 rgba(31, 45, 90, 0.06);
 }
 :root[data-theme="light"] .glass-card:hover,
 .light-theme .glass-card:hover {
   border-color: rgba(0, 0, 0, 0.12);
-  box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.1);
+  box-shadow: 0 12px 40px 0 rgba(31, 45, 90, 0.1);
 }
 :root[data-theme="light"] .input-field,
 .light-theme .input-field {
@@ -351,7 +404,7 @@ td {
 }
 :root[data-theme="light"] .input-field:focus,
 .light-theme .input-field:focus {
-  border-color: hsl(var(--accent-emerald));
+  border-color: hsl(var(--brand));
   background: rgba(0, 0, 0, 0.01);
 }
 :root[data-theme="light"] .data-table tbody tr:hover td,

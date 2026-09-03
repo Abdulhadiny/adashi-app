@@ -11,8 +11,8 @@ export function LogoIcon({ size = 32 }: { size?: number }) {
     >
       <defs>
         <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#10B981" />
-          <stop offset="100%" stopColor="#F59E0B" />
+          <stop offset="0%" stopColor="#729FF3" />
+          <stop offset="100%" stopColor="#2954A3" />
         </linearGradient>
       </defs>
       {/* Outer dashed cycle — rotational savings */}
@@ -28,7 +28,7 @@ export function LogoIcon({ size = 32 }: { size?: number }) {
       {/* Stylized "A" */}
       <path d="M16 7L24 21H20L16 13L12 21H8L16 7Z" fill="url(#logo-grad)" style={{ transition: "none" }} />
       {/* Vault dot */}
-      <circle cx="16" cy="18" r="2.5" fill="#10B981" style={{ transition: "none" }} />
+      <circle cx="16" cy="18" r="2.5" fill="#4C82E0" style={{ transition: "none" }} />
     </svg>
   );
 }

@@ -66,7 +66,7 @@ export default function LoginPage() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
         <LogoIcon size={36} />
-        <span style={{ fontSize: 22, fontWeight: 800, color: "#10B981" }}>Adashi</span>
+        <span className="brand-wordmark" style={{ fontSize: 22, fontWeight: 800 }}>Adashi</span>
       </div>
       <p style={{ margin: "0 0 20px", color: "hsl(var(--text-secondary))", fontSize: 14 }}>
         {mode === "pin"
@@ -124,7 +124,7 @@ export default function LoginPage() {
 
       <p style={{ marginTop: 14, fontSize: 13, color: "hsl(var(--text-muted))", textAlign: "center" }}>
         Are you a collection agent?{" "}
-        <Link href="/signup" style={{ color: "hsl(var(--accent-emerald))" }}>
+        <Link href="/signup" style={{ color: "hsl(var(--brand-fg))" }}>
           Create an account
         </Link>
       </p>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check } from "lucide-react";
-import { formatNaira } from "@/lib/format";
+import { ArrowLeft, Check, Download, Share2 } from "lucide-react";
+import { formatDateTime, formatNaira, formatNgPhone } from "@/lib/format";
 import type { getCycleDetail } from "@/lib/data/agent";
 import { closeCycleAction, markDepositAction, type DepositReceipt } from "../../actions";
 
@@ -32,7 +32,7 @@ export default function CycleDetailClient({ detail }: { detail: CycleDetail }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 18 }}>{cycle.participantName}</div>
-            <div style={{ color: "hsl(var(--text-muted))", fontSize: 13 }}>{cycle.participantPhone}</div>
+            <div style={{ color: "hsl(var(--text-muted))", fontSize: 13 }}>{formatNgPhone(cycle.participantPhone)}</div>
           </div>
           <span className={`badge ${isActive ? "emerald" : "muted"}`}>{cycle.status}</span>
         </div>
@@ -177,24 +177,177 @@ function DepositModal({
 }
 
 function ReceiptModal({ receipt, onClose }: { receipt: DepositReceipt; onClose: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [canShareFile, setCanShareFile] = useState(false);
+  const fileName = `adashi-receipt-${receipt.transactionId.slice(0, 8)}.png`;
+
+  // Pre-render the receipt image on mount. The PNG File is built here (not in the
+  // Share click handler) so the async toBlob doesn't consume the user-activation
+  // that navigator.share() requires on iOS.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const W = 640;
+    const H = 470;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    drawReceipt(ctx, receipt, W, H);
+
+    let objectUrl: string | null = null;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const f = new File([blob], fileName, { type: "image/png" });
+      objectUrl = URL.createObjectURL(blob);
+      setFile(f);
+      setFileUrl(objectUrl);
+      try {
+        setCanShareFile(!!navigator.canShare && navigator.canShare({ files: [f] }));
+      } catch {
+        setCanShareFile(false);
+      }
+    }, "image/png");
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [receipt, fileName]);
+
+  async function share() {
+    if (!file) return;
+    try {
+      await navigator.share({
+        files: [file],
+        title: "Adashi receipt",
+        text: `Payment receipt — ${formatNaira(receipt.amount)} for ${receipt.participantName} (day ${receipt.dayOfCycle}).`,
+      });
+    } catch {
+      // user dismissed the share sheet, or sharing was cancelled — no-op.
+    }
+  }
+
   return (
     <div style={overlay} onClick={onClose}>
-      <div className="glass-card" style={{ width: 340, maxWidth: "100%" }} onClick={(e) => e.stopPropagation()}>
+      <div className="glass-card" style={{ width: 360, maxWidth: "100%" }} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginTop: 0, fontSize: 18, textAlign: "center" }}>Receipt</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 14 }}>
-          <Line label="Saver" value={receipt.participantName} />
-          <Line label="Amount" value={formatNaira(receipt.amount)} />
-          <Line label="Day" value={String(receipt.dayOfCycle)} />
-          <Line label="Balance" value={formatNaira(receipt.balance)} />
-          <Line label="Agent" value={receipt.agentName} />
-          <Line label="Ref" value={receipt.transactionId.slice(0, 8).toUpperCase()} />
+        <canvas
+          ref={canvasRef}
+          style={{ width: "100%", height: "auto", borderRadius: 10, display: "block", border: "1px solid hsl(var(--border-glass))" }}
+        />
+        <p style={{ color: "hsl(var(--text-muted))", fontSize: 12, textAlign: "center", margin: "10px 0 0" }}>
+          Share the receipt image with the saver on WhatsApp, or download it.
+        </p>
+        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+          {canShareFile && (
+            <button className="btn btn-emerald" style={{ flex: 1 }} onClick={share} disabled={!file}>
+              <Share2 size={16} /> Share
+            </button>
+          )}
+          {fileUrl && (
+            <a
+              className="btn btn-ghost"
+              href={fileUrl}
+              download={fileName}
+              style={{ flex: 1, textAlign: "center", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            >
+              <Download size={16} /> Download
+            </a>
+          )}
         </div>
-        <button className="btn btn-emerald" style={{ width: "100%", marginTop: 16 }} onClick={onClose}>
+        <button className="btn btn-ghost" style={{ width: "100%", marginTop: 10 }} onClick={onClose}>
           Done
         </button>
       </div>
     </div>
   );
+}
+
+// Draw the receipt onto a canvas (no external libs). White card so it reads well
+// regardless of the app theme; a plain vector mark avoids tainting the canvas.
+function drawReceipt(ctx: CanvasRenderingContext2D, r: DepositReceipt, W: number, H: number) {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  // Header band
+  ctx.fillStyle = "#047857";
+  ctx.fillRect(0, 0, W, 84);
+
+  // Vector mark + wordmark
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(42, 42, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#047857";
+  ctx.font = "bold 18px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("A", 42, 43);
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 22px sans-serif";
+  ctx.fillText("Adashi", 70, 40);
+  ctx.font = "13px sans-serif";
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillText("Payment Receipt", 70, 60);
+  ctx.textAlign = "right";
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(r.businessName || r.agentName, W - 28, 46);
+  ctx.textAlign = "left";
+
+  // Amount
+  let y = 132;
+  ctx.fillStyle = "#64748b";
+  ctx.font = "13px sans-serif";
+  ctx.fillText("Amount paid", 28, y);
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "bold 40px sans-serif";
+  ctx.fillText(formatNaira(r.amount), 28, y + 42);
+
+  // Divider
+  y += 74;
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(28, y);
+  ctx.lineTo(W - 28, y);
+  ctx.stroke();
+
+  // Detail rows
+  const rows: [string, string][] = [
+    ["Saver", r.participantName],
+    ["Phone", formatNgPhone(r.participantPhone)],
+    ["Day", `Day ${r.dayOfCycle} of 31`],
+    ["Balance", formatNaira(r.balance)],
+    ["Agent", r.agentName],
+    ["Date", formatDateTime(r.recordedAt)],
+    ["Reference", r.transactionId.slice(0, 8).toUpperCase()],
+  ];
+  y += 30;
+  for (const [label, value] of rows) {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "14px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(label, 28, y);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "600 14px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(value, W - 28, y);
+    y += 30;
+  }
+
+  // Footer
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Thank you for saving with Adashi", W / 2, H - 18);
+  ctx.textAlign = "left";
 }
 
 function CloseModal({
@@ -276,15 +429,6 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div>
       <div style={{ fontSize: 12, color: "hsl(var(--text-muted))" }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 700, color: "hsl(var(--text-primary))" }}>{value}</div>
-    </div>
-  );
-}
-
-function Line({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between" }}>
-      <span style={{ color: "hsl(var(--text-muted))" }}>{label}</span>
-      <span style={{ color: "hsl(var(--text-primary))", fontWeight: 600 }}>{value}</span>
     </div>
   );
 }

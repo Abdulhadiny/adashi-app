@@ -5,6 +5,7 @@ import { db } from "@/lib/db/client";
 import { agentProfiles, users } from "@/lib/db/schema";
 import { isValidNgPhone, normalizeNgPhone } from "@/lib/auth/phone";
 import { issueOtp } from "@/lib/auth/otp";
+import { notifyAdmins } from "@/lib/notifications/inapp";
 
 // Agent self-registration (replaces the handle_new_agent trigger). Public: creates
 // an agent user + a pending_approval profile, then sends a login OTP.
@@ -34,6 +35,14 @@ export async function signupAgentAction(input: {
   await db
     .insert(agentProfiles)
     .values({ userId: user.id, businessName, approvalStatus: "pending_approval" });
+
+  // In-app: alert every admin that a new agent is awaiting approval.
+  await notifyAdmins({
+    type: "agent_registered",
+    title: "New agent awaiting approval",
+    body: `${businessName} — ${fullName} has registered and is awaiting review.`,
+    href: "/admin/approvals",
+  });
 
   await issueOtp(phone);
   return { ok: true };

@@ -8,7 +8,6 @@ import {
   date,
   index,
   integer,
-  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -31,10 +30,7 @@ export const agentApprovalStatus = pgEnum("agent_approval_status", [
 export const apStatus = pgEnum("ap_status", ["active", "inactive"]);
 export const cycleStatus = pgEnum("cycle_status", ["active", "closed"]);
 export const txKind = pgEnum("tx_kind", ["deposit", "withdrawal"]);
-export const notifChannel = pgEnum("notif_channel", ["whatsapp", "sms"]);
-export const notifStatus = pgEnum("notif_status", ["pending", "sent", "delivered", "failed"]);
 export const disputeStatus = pgEnum("dispute_status", ["open", "resolved"]);
-export const approvalAction = pgEnum("approval_action", ["approved", "rejected"]);
 
 // Shared column builders
 const createdAt = timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
@@ -165,37 +161,28 @@ export const transactions = pgTable(
   ],
 );
 
-// ── notifications ─────────────────────────────────────────────────────────────
-// Dual-shape: a participant notification (participant+agent+channel all set) OR
-// an agent-only notification (agent set, participant+channel null, e.g. approvals).
-export const notifications = pgTable(
-  "notifications",
+// ── in_app_notifications ──────────────────────────────────────────────────────
+// In-app notification center (replaces the old outbound WhatsApp/SMS log). One row
+// per recipient; `readAt` null = unread. `href` is an optional in-app deep link.
+export const inAppNotifications = pgTable(
+  "in_app_notifications",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    transactionId: uuid("transaction_id").references(() => transactions.id, {
-      onDelete: "cascade",
-    }),
-    participantId: uuid("participant_id").references(() => users.id, { onDelete: "cascade" }),
-    agentId: uuid("agent_id").references(() => users.id, { onDelete: "cascade" }),
-    channel: notifChannel("channel"),
-    templateName: text("template_name").notNull(),
-    templateParams: jsonb("template_params").$type<Record<string, string>>().notNull().default({}),
-    status: notifStatus("status").notNull().default("pending"),
-    errorCode: text("error_code"),
-    sentAt: timestamp("sent_at", { withTimezone: true }),
+    recipientId: uuid("recipient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    href: text("href"),
+    readAt: timestamp("read_at", { withTimezone: true }),
     createdAt,
   },
   (t) => [
-    check(
-      "notif_shape",
-      sql`
-        (${t.participantId} is not null and ${t.agentId} is not null and ${t.channel} is not null)
-        or
-        (${t.agentId} is not null and ${t.participantId} is null and ${t.channel} is null)
-      `,
-    ),
-    index("idx_notifications_agent").on(t.agentId),
-    index("idx_notifications_participant").on(t.participantId),
+    index("idx_inapp_recipient_created").on(t.recipientId, t.createdAt.desc()),
+    index("idx_inapp_unread")
+      .on(t.recipientId)
+      .where(sql`read_at is null`),
   ],
 );
 
@@ -222,23 +209,25 @@ export const disputes = pgTable(
   (t) => [index("idx_disputes_agent").on(t.agentId), index("idx_disputes_participant").on(t.participantId)],
 );
 
-// ── agent_approvals_audit ─────────────────────────────────────────────────────
-export const agentApprovalsAudit = pgTable(
-  "agent_approvals_audit",
+// ── audit_log ─────────────────────────────────────────────────────────────────
+// General admin/system audit trail (replaces the approvals-only agent_approvals_audit).
+// `actorId` null = system. `action` is free text (e.g. agent_approved, agent_suspended,
+// participant_registered). `entityType`/`entityId` point at the affected subject.
+export const auditLog = pgTable(
+  "audit_log",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    agentId: uuid("agent_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    adminId: uuid("admin_id").references(() => users.id, { onDelete: "set null" }),
-    action: approvalAction("action").notNull(),
+    actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: uuid("entity_id"),
+    summary: text("summary").notNull(),
     note: text("note"),
     createdAt,
   },
   (t) => [
-    index("idx_audit_agent").on(t.agentId),
-    index("idx_audit_admin").on(t.adminId),
     index("idx_audit_created").on(t.createdAt.desc()),
+    index("idx_audit_entity").on(t.entityType, t.entityId),
   ],
 );
 
@@ -314,13 +303,12 @@ export const disputesRelations = relations(disputes, ({ one }) => ({
   agent: one(users, { fields: [disputes.agentId], references: [users.id] }),
 }));
 
-export const notificationsRelations = relations(notifications, ({ one }) => ({
-  participant: one(users, { fields: [notifications.participantId], references: [users.id] }),
-  agent: one(users, { fields: [notifications.agentId], references: [users.id] }),
-  transaction: one(transactions, {
-    fields: [notifications.transactionId],
-    references: [transactions.id],
-  }),
+export const inAppNotificationsRelations = relations(inAppNotifications, ({ one }) => ({
+  recipient: one(users, { fields: [inAppNotifications.recipientId], references: [users.id] }),
+}));
+
+export const auditLogRelations = relations(auditLog, ({ one }) => ({
+  actor: one(users, { fields: [auditLog.actorId], references: [users.id] }),
 }));
 
 // ── Inferred types ────────────────────────────────────────────────────────────
@@ -331,10 +319,11 @@ export type ParticipantProfile = typeof participantProfiles.$inferSelect;
 export type AgentParticipant = typeof agentParticipants.$inferSelect;
 export type Cycle = typeof cycles.$inferSelect;
 export type Transaction = typeof transactions.$inferSelect;
-export type Notification = typeof notifications.$inferSelect;
-export type NewNotification = typeof notifications.$inferInsert;
+export type InAppNotification = typeof inAppNotifications.$inferSelect;
+export type NewInAppNotification = typeof inAppNotifications.$inferInsert;
 export type Dispute = typeof disputes.$inferSelect;
-export type AgentApprovalAudit = typeof agentApprovalsAudit.$inferSelect;
+export type AuditLog = typeof auditLog.$inferSelect;
+export type NewAuditLog = typeof auditLog.$inferInsert;
 export type OtpCode = typeof otpCodes.$inferSelect;
 
 export type UserRole = (typeof userRole.enumValues)[number];
@@ -342,6 +331,4 @@ export type UserStatus = (typeof userStatus.enumValues)[number];
 export type AgentApprovalStatus = (typeof agentApprovalStatus.enumValues)[number];
 export type CycleStatus = (typeof cycleStatus.enumValues)[number];
 export type TransactionKind = (typeof txKind.enumValues)[number];
-export type NotificationChannel = (typeof notifChannel.enumValues)[number];
-export type NotificationStatus = (typeof notifStatus.enumValues)[number];
 export type DisputeStatus = (typeof disputeStatus.enumValues)[number];

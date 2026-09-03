@@ -1,9 +1,11 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { agentProfiles, cycles, transactions, users } from "@/lib/db/schema";
 import type { AgentApprovalStatus } from "@/lib/db/schema";
 import { requireRole } from "./session";
 
+// The Agents Directory lists only *approved* agents (active or suspended). Agents
+// still awaiting approval live on the Approvals page; rejected agents show nowhere.
 export async function listAgents() {
   await requireRole("admin");
   return db
@@ -17,6 +19,7 @@ export async function listAgents() {
     })
     .from(agentProfiles)
     .innerJoin(users, eq(users.id, agentProfiles.userId))
+    .where(inArray(agentProfiles.approvalStatus, ["active", "suspended"]))
     .orderBy(desc(users.createdAt));
 }
 

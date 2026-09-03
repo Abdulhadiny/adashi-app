@@ -54,13 +54,14 @@ normalized to `234…`.
 ## Architecture (the live code)
 
 - `app/` — App Router. Route groups: `(auth)` (login/verify/signup), `(admin)` (pages under
-  `app/(admin)/admin/*`: home KPIs, agents, approvals, ledger, disputes, notifications), `(agent)` (the
+  `app/(admin)/admin/*`: home KPIs, agents, approvals, ledger, disputes, audit), `(agent)` (the
   field app under `app/(agent)/agent/*`: home, participants, cycles/[cycleId], disputes, history,
   settings — behind a pending-approval gate in its `layout.tsx`), and `(participant)` (the saver app
   under `app/(participant)/participant/*`: dashboard, cycles/[cycleId] read-only calendar, disputes,
   settings). `app/api/otp/send` and `app/api/auth/[...nextauth]` are the auth endpoints.
-- `lib/db` — Drizzle `schema.ts` (all tables + pgEnums + `check()`s, incl. the `notifications` dual-shape
-  and numeric-money-as-**string**), `client.ts` (postgres.js singleton pinned on `globalThis`),
+- `lib/db` — Drizzle `schema.ts` (all tables + pgEnums + `check()`s, incl. the recipient-scoped
+  `in_app_notifications`, the general `audit_log`, and numeric-money-as-**string**), `client.ts`
+  (postgres.js singleton pinned on `globalThis`),
   `migrations/`, `seed.ts`.
 - `lib/auth` — the **edge/Node split that makes phone-login + edge proxy work**: `auth.config.ts`
   (EDGE-safe: callbacks only, no DB — puts `{id, role, phone}` in the JWT/session), `auth.ts` (NODE:
@@ -78,13 +79,17 @@ normalized to `234…`.
 - `lib/data` — the **RBAC boundary** (replaces Supabase RLS). `session.ts` resolves the caller from the
   session itself — callers never pass their own id/role — via `getSessionOrThrow` / `requireRole(...)`
   (throws `UnauthorizedError` / `ForbiddenError`); every per-domain read function (`admin.ts`, `agents.ts`,
-  `approvals.ts`, `ledger.ts`, `disputes.ts`, `notifications.ts`, `agent.ts`, `participant.ts`) scopes its
+  `approvals.ts`, `ledger.ts`, `disputes.ts`, `inapp.ts`, `agent.ts`, `participant.ts`) scopes its
   query by the caller's role/id. `agent.ts` adds `requireActiveAgent` (also enforces `approvalStatus =
   active`). Mutations are **server actions** in `app/(admin)/admin/*/actions.ts`, `app/(agent)/agent/actions.ts`,
   `app/(participant)/participant/actions.ts`, and `app/(auth)/signup/actions.ts`; the pattern is
-  **guard → mutate → `revalidatePath` → dispatch notification**.
-- `lib/notifications/dispatch.ts` — outbound-message seam (dev-stubbed): `dispatchAgentApprovalNotification`
-  (admin) and `dispatchParticipantNotification` (onboarding|cycle_start|deposit|cycle_close).
+  **guard → mutate → `revalidatePath` → create in-app notification / audit row**.
+- `lib/notifications/inapp.ts` — in-app notification + audit writers (server-only): `createNotification`
+  (one recipient), `notifyAdmins` (fan out to every admin), `recordAudit` (append to `audit_log`).
+  Reads are session-scoped in `lib/data/inapp.ts` (`listMyNotifications` / `countMyUnread`); the
+  `NotificationBell` in each role shell renders them. Client mark-read actions live in
+  `lib/notifications/actions.ts`. (Outbound WhatsApp/SMS was removed; deposits produce a shareable
+  receipt image instead — see `app/(agent)/agent/cycles/[cycleId]/CycleDetailClient.tsx`.)
 - `lib/format.ts` — UI-edge money/format helpers (e.g. `formatNaira`). `components/` — shared UI
   (`Logo`, `ThemeToggle`, `SignOutButton`) + per-role shells (`admin/`, `agent/`, `participant/`).
   `types/next-auth.d.ts` augments the Auth.js session/JWT with `{ id, role, phone }`.
@@ -113,10 +118,13 @@ where `chosenCommission` is one day's `daily_amount` for a normal close or an ag
   `.toFixed(2)` back to a string.
 - **Drizzle wraps the driver error**, so a Postgres code (e.g. unique-violation `23505`) can be on `e.code`
   **or** `e.cause.code` — check both (see `app/(agent)/agent/actions.ts`).
-- **Notifications are dual-shape.** A DB `CHECK` allows either a full participant notification (participant
-  + agent + channel) or an agent-only one (approvals: agent set, participant/channel null).
-- **SMS/messaging is pluggable & dev-stubbed.** OTP and outbound messages go through the `SmsProvider` /
-  dispatch seams whose dev implementations log to the console; real Termii/Twilio impls drop in behind them.
+- **Notifications are in-app, recipient-scoped.** `in_app_notifications` has one row per `recipientId`;
+  `readAt` null = unread. Write them from server actions via `createNotification` / `notifyAdmins`
+  (`lib/notifications/inapp.ts`); the `NotificationBell` in each shell reads the caller's own rows. There is
+  **no** outbound WhatsApp/SMS for these — that seam was removed. Significant admin/system actions also
+  append to `audit_log` via `recordAudit` (the admin **Audit Logs** page + the per-agent Approvals History).
+- **SMS is OTP-only & dev-stubbed.** The `SmsProvider` seam in `lib/auth/otp.ts` now carries **only** the
+  login OTP (dev impl logs to the console; a real Termii/Twilio impl drops in behind it).
 - **Phone numbers are Nigerian E.164 (`234…`)** — normalize with `normalizeNgPhone` before any lookup/insert.
 - **ESLint** uses `eslint.config.mjs` (flat), importing `eslint-config-next/core-web-vitals` and
   `eslint-config-next/typescript` arrays directly (FlatCompat crashes on ESLint 9 + these plugins);

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus } from "lucide-react";
-import { formatNaira } from "@/lib/format";
+import { formatNaira, formatNgPhone } from "@/lib/format";
 import type { MyParticipant } from "@/lib/data/agent";
 import {
   lookupParticipantAction,
@@ -36,7 +36,7 @@ export default function ParticipantsClient({ participants }: { participants: MyP
             <div>
               <div style={{ color: "hsl(var(--text-primary))", fontWeight: 700 }}>{p.fullName}</div>
               <div style={{ color: "hsl(var(--text-muted))", fontSize: 13 }}>
-                {p.phone}
+                {formatNgPhone(p.phone)}
                 {p.nickname ? ` · ${p.nickname}` : ""}
               </div>
             </div>

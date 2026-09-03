@@ -13,7 +13,8 @@ import {
 } from "@/lib/db/schema";
 import { lookupParticipantByPhone, requireActiveAgent } from "@/lib/data/agent";
 import { isValidNgPhone, normalizeNgPhone } from "@/lib/auth/phone";
-import { dispatchParticipantNotification } from "@/lib/notifications/dispatch";
+import { createNotification, notifyAdmins, recordAudit } from "@/lib/notifications/inapp";
+import { formatNaira } from "@/lib/format";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -34,50 +35,91 @@ export async function registerOrLinkParticipantAction(input: {
   const fullName = input.fullName.trim();
   const nickname = input.nickname?.trim() || null;
 
-  // Find an existing participant by phone.
-  let [participant] = await db
-    .select({ id: users.id, fullName: users.fullName, phone: users.phone })
-    .from(users)
-    .where(and(eq(users.phone, phone), eq(users.role, "participant")))
-    .limit(1);
+  // Provision-or-link atomically. users.phone is UNIQUE across all roles, so two agents
+  // registering the same new phone at once would otherwise race: one INSERT wins, the other
+  // raises 23505. onConflictDoNothing + re-read resolves that into a clean link instead of an
+  // unhandled error, and the transaction keeps the users/profile/link writes all-or-nothing.
+  const outcome = await db.transaction(async (tx) => {
+    // Find an existing participant by phone.
+    let [participant] = await tx
+      .select({ id: users.id, fullName: users.fullName, phone: users.phone })
+      .from(users)
+      .where(and(eq(users.phone, phone), eq(users.role, "participant")))
+      .limit(1);
 
-  let wasCreated = false;
-  if (!participant) {
-    if (!fullName) return { ok: false, error: "A name is required to register a new saver." };
-    const [created] = await db
-      .insert(users)
-      .values({ phone, fullName, role: "participant", status: "pending" })
-      .returning({ id: users.id, fullName: users.fullName, phone: users.phone });
-    participant = created;
-    await db.insert(participantProfiles).values({
-      userId: created.id,
-      nickname,
-      registeredByAgentId: agent.userId,
-    });
-    wasCreated = true;
-  }
+    let wasCreated = false;
+    if (!participant) {
+      if (!fullName) return { ok: false as const, error: "A name is required to register a new saver." };
+      const [created] = await tx
+        .insert(users)
+        .values({ phone, fullName, role: "participant", status: "pending" })
+        .onConflictDoNothing({ target: users.phone })
+        .returning({ id: users.id, fullName: users.fullName, phone: users.phone });
 
-  // agent_participants is the source of truth for "belongs to" — ensure an active link.
-  await db
-    .insert(agentParticipants)
-    .values({ agentId: agent.userId, participantId: participant.id, status: "active" })
-    .onConflictDoUpdate({
-      target: [agentParticipants.agentId, agentParticipants.participantId],
-      set: { status: "active" },
-    });
+      if (created) {
+        participant = created;
+        wasCreated = true;
+        await tx.insert(participantProfiles).values({
+          userId: created.id,
+          nickname,
+          registeredByAgentId: agent.userId,
+        });
+      } else {
+        // Insert was a no-op: another agent won the race (or the phone already belongs to a
+        // non-participant). Re-read to see who now owns it.
+        [participant] = await tx
+          .select({ id: users.id, fullName: users.fullName, phone: users.phone })
+          .from(users)
+          .where(and(eq(users.phone, phone), eq(users.role, "participant")))
+          .limit(1);
+      }
+    }
 
-  await dispatchParticipantNotification({
-    type: "onboarding",
-    participantId: participant.id,
-    participantName: participant.fullName,
-    participantPhone: participant.phone,
-    agentId: agent.userId,
-    agentName: agent.fullName,
+    if (!participant) {
+      // Phone is taken by a non-participant (agent/admin) — can't link them as a saver.
+      return { ok: false as const, error: "That phone number is already in use." };
+    }
+
+    // agent_participants is the source of truth for "belongs to" — ensure an active link.
+    await tx
+      .insert(agentParticipants)
+      .values({ agentId: agent.userId, participantId: participant.id, status: "active" })
+      .onConflictDoUpdate({
+        target: [agentParticipants.agentId, agentParticipants.participantId],
+        set: { status: "active" },
+      });
+
+    return { ok: true as const, participant, wasCreated };
   });
+
+  if (!outcome.ok) return outcome;
+
+  // Side effects run only after the transaction commits. Notifications + audit fire
+  // only for a genuinely new registration — re-linking an existing saver is silent.
+  if (outcome.wasCreated) {
+    await createNotification({
+      recipientId: outcome.participant.id,
+      type: "onboarding",
+      title: "Welcome to Adashi",
+      body: `You have been registered by ${agent.fullName}. Your savings journey starts now.`,
+    });
+    await notifyAdmins({
+      type: "participant_registered",
+      title: "New saver registered",
+      body: `${outcome.participant.fullName} was registered by ${agent.fullName} (${agent.businessName}).`,
+    });
+    await recordAudit({
+      actorId: agent.userId,
+      action: "participant_registered",
+      entityType: "participant",
+      entityId: outcome.participant.id,
+      summary: `${agent.fullName} registered saver ${outcome.participant.fullName}`,
+    });
+  }
 
   revalidatePath("/agent/participants");
   revalidatePath("/agent");
-  return { ok: true, participantId: participant.id, wasCreated };
+  return { ok: true, participantId: outcome.participant.id, wasCreated: outcome.wasCreated };
 }
 
 // ── Start a savings cycle ─────────────────────────────────────────────────────
@@ -117,12 +159,6 @@ export async function startCycleAction(input: {
     .limit(1);
   if (existingActive) return { ok: false, error: "This saver already has an active plan." };
 
-  const [participant] = await db
-    .select({ fullName: users.fullName, phone: users.phone })
-    .from(users)
-    .where(eq(users.id, input.participantId))
-    .limit(1);
-
   const [cycle] = await db
     .insert(cycles)
     .values({
@@ -133,14 +169,11 @@ export async function startCycleAction(input: {
     })
     .returning({ id: cycles.id });
 
-  await dispatchParticipantNotification({
+  await createNotification({
+    recipientId: input.participantId,
     type: "cycle_start",
-    participantId: input.participantId,
-    participantName: participant?.fullName ?? "",
-    participantPhone: participant?.phone ?? "",
-    agentId: agent.userId,
-    agentName: agent.fullName,
-    amount: amount.toFixed(2),
+    title: "New savings plan started",
+    body: `${agent.fullName} started a ${formatNaira(amount)}/day savings plan for you.`,
   });
 
   revalidatePath("/agent/participants");
@@ -157,6 +190,8 @@ export interface DepositReceipt {
   balance: string;
   transactionId: string;
   agentName: string;
+  businessName: string;
+  recordedAt: string;
 }
 
 export async function markDepositAction(input: {
@@ -195,7 +230,7 @@ export async function markDepositAction(input: {
         dayOfCycle: day,
         amount: cycle.dailyAmount,
       })
-      .returning({ id: transactions.id });
+      .returning({ id: transactions.id, createdAt: transactions.createdAt });
   } catch (e) {
     // unique (cycle_id, kind, day_of_cycle) violation → day already paid.
     // drizzle wraps the driver error, so the pg code can be on e.code OR e.cause.code.
@@ -210,16 +245,11 @@ export async function markDepositAction(input: {
     .from(transactions)
     .where(and(eq(transactions.cycleId, cycle.id), eq(transactions.kind, "deposit")));
 
-  await dispatchParticipantNotification({
+  await createNotification({
+    recipientId: cycle.participantId,
     type: "deposit",
-    participantId: cycle.participantId,
-    participantName: cycle.participantName,
-    participantPhone: cycle.participantPhone,
-    agentId: agent.userId,
-    agentName: agent.fullName,
-    amount: cycle.dailyAmount,
-    dayOfCycle: day,
-    transactionId: tx.id,
+    title: "Deposit recorded",
+    body: `${agent.fullName} recorded your ${formatNaira(cycle.dailyAmount)} deposit for day ${day}. Balance: ${formatNaira(total)}.`,
   });
 
   revalidatePath(`/agent/cycles/${cycle.id}`);
@@ -235,6 +265,8 @@ export async function markDepositAction(input: {
       balance: total,
       transactionId: tx.id,
       agentName: agent.fullName,
+      businessName: agent.businessName,
+      recordedAt: tx.createdAt.toISOString(),
     },
   };
 }
@@ -287,14 +319,11 @@ export async function closeCycleAction(input: {
     })
     .where(eq(cycles.id, cycle.id));
 
-  await dispatchParticipantNotification({
+  await createNotification({
+    recipientId: cycle.participantId,
     type: "cycle_close",
-    participantId: cycle.participantId,
-    participantName: cycle.participantName,
-    participantPhone: cycle.participantPhone,
-    agentId: agent.userId,
-    agentName: agent.fullName,
-    amount: payout.toFixed(2),
+    title: "Savings plan closed",
+    body: `${agent.fullName} closed your savings plan. Your payout of ${formatNaira(payout.toFixed(2))} is ready.`,
   });
 
   revalidatePath(`/agent/cycles/${cycle.id}`);
